@@ -17,7 +17,7 @@ module.exports = {
     amoy: {
       url: process.env.AMOY_RPC_URL,
       accounts: [`0x${process.env.PRIVATE_KEY}`],
-      chainId: 1442, // Ensure this is the correct Chain ID
+      chainId: 80002,
     },
     polygon: {
       url: process.env.POLYGON_RPC_URL,
