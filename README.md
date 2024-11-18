@@ -1,5 +1,3 @@
-# COIN100
-
 ## **Table of Contents**
 
 1. Introduction  
@@ -24,14 +22,14 @@
    * 6.1. Update `hardhat.config.js`  
    * 6.2. Set Up Environment Variables  
    * 6.3. Install Additional Dependencies  
-7. Deploying Contracts to the Mumbai Testnet  
+7. Deploying Contracts to the Amoy Testnet  
    * 7.1. Writing Deployment Scripts  
    * 7.2. Deploying Contracts  
    * 7.3. Verify Deployments  
-8. Testing Smart Contracts on the Mumbai Testnet  
+8. Testing Smart Contracts on the Amoy Testnet  
    * 8.1. Writing Unit Tests  
    * 8.2. Running Unit Tests  
-   * 8.3. Manual Testing on Mumbai Testnet  
+   * 8.3. Manual Testing on Amoy Testnet  
 9. Managing and Securing Wallets  
    * 9.1. Securing Private Keys  
    * 9.2. Setting Up Multi-Signature Wallets  
@@ -50,37 +48,6 @@
 **COIN100** is a decentralized cryptocurrency index fund built on the Polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S\&P 500, COIN100 aims to provide a secure, transparent, and efficient investment vehicle for both novice and experienced crypto investors.
 
 **Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
-
-## **Key Features**
-
-* **Total Supply:** 1,000,000,000 COIN100 tokens.  
-* **Allocations:**  
-  * **50% Public Sale:** 500,000,000 COIN100  
-  * **10% Developer Treasury:** 100,000,000 COIN100  
-  * **20% Liquidity Pool:** 200,000,000 COIN100  
-  * **7% Marketing:** 70,000,000 COIN100  
-  * **5% Staking Rewards:** 50,000,000 COIN100  
-  * **3% Community Treasury:** 30,000,000 COIN100  
-  * **5% Reserve:** 50,000,000 COIN100  
-* **Fees:** A 0.3% fee on all transfers, distributed as follows:  
-  * **0.20% Developer Treasury**  
-  * **0.16% Liquidity Incentive Wallet**  
-  * **0.12% Community Treasury**  
-* **Vesting Schedule:** Developer Treasury tokens are vested over 2 years to ensure long-term commitment.  
-* **Governance:** Community-controlled utilization of Community Treasury funds through decentralized governance.  
-* **Staking Rewards:** Incentivizes users to stake their COIN100 tokens.  
-* **Index Tracking:** Dynamically tracks and reflects the value of the top 100 cryptocurrencies by market cap.  
-* **Community Engagement:** Active discussions and governance proposals on the project website.  
-* **Dynamic Liquidity Provision:** Combines fee-based liquidity addition with incentivized liquidity rewards to build and maintain liquidity without significant upfront investment.
-
-## **Wallets**
-* wallets:
-coin100owner = 0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C
-Coin100DeveloperTreasury = 0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60
-Coin100LiquidityPool = 0x799f59a724Cc6a745083cE8A160ba7D13FD471A0
-Coin100Marketing = 0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a
-Coin100StakingRewards = 0x3D8029660048e7E0a7bD04623802Ab815cc84CF8
-Coin100ReserveWallet = 0xE51edf567dc8162d1EAe53764A864f34deB0DdE9
 
 ---
 
@@ -232,61 +199,97 @@ This wallet will act as the primary controller of the project, holding administr
 
 1. **Install MetaMask:**  
    * After installation, open the MetaMask extension.  
-2. **Create a New Wallet:**  
-   * Click on **"Get Started"**.  
-   * Choose **"Create a Wallet"**.  
-   * Set a strong password.  
-   * **Securely back up the seed phrase** by writing it down and storing it in a safe place. **Never share this phrase.**  
+2. **Import Existing Wallet:**  
+   * Since you have a specific wallet address for the project owner, you likely already have the private key or seed phrase.  
+   * Click on **"Import Wallet"** instead of creating a new one.  
+   * Follow the prompts to import using your seed phrase or private key.  
 3. **Rename the Wallet:**  
    * Click on the account name (e.g., "Account 1") and rename it to **"COIN100 Owner"** for clarity.
+
+**Project Owner Wallet Address:**
+
+Copy code
+
+`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`
 
 ### **4.3. Create Additional Wallets for Specific Roles**
 
 For better security and organization, it's advisable to create separate wallets for different allocations. Here's how to set them up:
 
+**Note:** Since you have specific wallet addresses for each role, you can import them directly into MetaMask if you have their private keys or seed phrases.
+
 #### **a. Developer Treasury Wallet**
 
-1. **Create a New Account in MetaMask:**  
-   * Click on the account icon.  
-   * Select **"Create Account"**.  
-   * Name it **"Developer Treasury"**.
+**Developer Treasury Wallet Address:**
+
+Copy code
+
+`0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`
 
 #### **b. Liquidity Pool Wallet**
 
-1. **Create Another Account:**  
-   * Name it **"Liquidity Pool"**.
+**Liquidity Pool Wallet Address:**
+
+Copy code
+
+`0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`
 
 #### **c. Marketing Wallet**
 
-1. **Create Another Account:**  
-   * Name it **"Marketing Wallet"**.
+**Marketing Wallet Address:**
+
+Copy code
+
+`0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`
 
 #### **d. Staking Rewards Wallet**
 
-1. **Create Another Account:**  
-   * Name it **"Staking Rewards"**.
+**Staking Rewards Wallet Address:**
 
-#### **e. Community Treasury Wallet**
+Copy code
 
-1. **Create Another Account:**  
-   * Name it **"Community Treasury"**.
+`0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`
 
-#### **f. Reserve Wallet**
+#### **e. Reserve Wallet**
 
-1. **Create Another Account:**  
-   * Name it **"Reserve Wallet"**.
+**Reserve Wallet Address:**
+
+Copy code
+
+`0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`
+
+**Steps to Import Each Wallet:**
+
+1. **Import Wallet:**  
+   * In MetaMask, click on the account icon.  
+   * Select **"Import Account"**.  
+   * Choose **"Private Key"** or **"JSON File"** based on your available credentials.  
+   * Enter the private key or upload the JSON file for the respective wallet.  
+2. **Rename the Wallet:**  
+   * After importing, rename each account accordingly:  
+     * **Developer Treasury**  
+     * **Liquidity Pool**  
+     * **Marketing Wallet**  
+     * **Staking Rewards**  
+     * **Reserve Wallet**
 
 ### **4.4. Fund the Wallets on the Testnet**
 
 Before deploying contracts, ensure each wallet has sufficient testnet MATIC for gas fees.
 
-1. **Switch to the Mumbai Testnet:**  
+1. **Switch to the Amoy Testnet:**  
    * In MetaMask, click on the network dropdown (default is "Ethereum Mainnet").  
-   * Select **"Mumbai Testnet"**.  
+   * Select **"Amoy Testnet"**.  
+   * **Note:** If Amoy Testnet is not listed, you may need to add it manually by providing the network details.  
 2. **Obtain Test MATIC:**  
-   * Visit the Polygon Faucet or Mumbai Faucet to request test MATIC.  
-   * Enter the **Project Owner Wallet address** and request funds.  
-   * Repeat the process for each additional wallet by switching accounts and requesting test MATIC.
+   * Visit the Amoy Testnet Faucet *(Replace with the actual Amoy Testnet faucet URL)* to request test MATIC.  
+   * Enter each wallet address and request funds sequentially:  
+     * **Project Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
+     * **Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
+     * **Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
+     * **Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
+     * **Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
+     * **Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`
 
 ---
 
@@ -442,7 +445,7 @@ Copy code
 
         `reserveWallet = _reserveWallet;`
 
-        `// Mint the total supply`
+        `// Mint the total supply to the contract itself`
 
         `_mint(address(this), TOTAL_SUPPLY);`
 
@@ -462,19 +465,21 @@ Copy code
 
         `uint256 reserveAmount = (TOTAL_SUPPLY * RESERVE_PERCENT) / 100;`
 
-        `_transfer(address(this), msg.sender, publicSaleAmount);`
+        `// Distribute tokens to respective wallets`
 
-        `_transfer(address(this), developerTreasury, developerAmount);`
+        `_transfer(address(this), msg.sender, publicSaleAmount); // COIN100 Owner`
 
-        `_transfer(address(this), liquidityPool, liquidityAmount);`
+        `_transfer(address(this), developerTreasury, developerAmount); // Developer Treasury`
 
-        `_transfer(address(this), marketingWallet, marketingAmount);`
+        `_transfer(address(this), liquidityPool, liquidityAmount); // Liquidity Pool`
 
-        `_transfer(address(this), stakingRewards, stakingAmount);`
+        `_transfer(address(this), marketingWallet, marketingAmount); // Marketing Wallet`
 
-        `_transfer(address(this), communityTreasury, communityAmount);`
+        `_transfer(address(this), stakingRewards, stakingAmount); // Staking Rewards`
 
-        `_transfer(address(this), reserveWallet, reserveAmount);`
+        `_transfer(address(this), communityTreasury, communityAmount); // Community Treasury`
+
+        `_transfer(address(this), reserveWallet, reserveAmount); // Reserve Wallet`
 
     `}`
 
@@ -980,7 +985,7 @@ Copy code
 
 ## **6\. Configuring Hardhat for Deployment**
 
-Before deploying the contracts, ensure that Hardhat is correctly configured to interact with the Mumbai Testnet.
+Before deploying the contracts, ensure that Hardhat is correctly configured to interact with the **Amoy Testnet**.
 
 ### **6.1. Update `hardhat.config.js`**
 
@@ -1004,9 +1009,9 @@ Copy code
 
   `networks: {`
 
-    `mumbai: {`
+    `amoy: { // Amoy Testnet configuration`
 
-      `url: process.env.MUMBAI_RPC_URL,`
+      `url: process.env.AMOY_RPC_URL,`
 
       ``accounts: [`0x${process.env.PRIVATE_KEY}`],``
 
@@ -1015,6 +1020,8 @@ Copy code
   `},`
 
 `};`
+
+**Note:** Replace `"amoy"` with the correct network name if different. Ensure that Amoy Testnet is supported by your RPC provider.
 
 ### **6.2. Set Up Environment Variables**
 
@@ -1026,15 +1033,15 @@ env
 
 Copy code
 
-`MUMBAI_RPC_URL=https://polygon-mumbai.infura.io/v3/YOUR_INFURA_PROJECT_ID`
+`AMOY_RPC_URL=https://amoy-testnet.rpc.url # Replace with the actual Amoy Testnet RPC URL`
 
-`PRIVATE_KEY=YOUR_PRIVATE_KEY`
+`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet`
 
 **Important:**
 
 * **Never share your `.env` file or expose your private key.**  
-* Replace `YOUR_INFURA_PROJECT_ID` with your actual Infura project ID or use another RPC provider.  
-* Replace `YOUR_PRIVATE_KEY` with the private key of your **Project Owner Wallet**.
+* Replace `https://amoy-testnet.rpc.url` with the actual RPC URL for the Amoy Testnet provided by your RPC provider.  
+* Replace `YOUR_PRIVATE_KEY` with the private key of your **COIN100 Owner Wallet** (`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`).
 
 ### **6.3. Install Additional Dependencies**
 
@@ -1050,9 +1057,9 @@ Copy code
 
 ---
 
-## **7\. Deploying Contracts to the Mumbai Testnet**
+## **7\. Deploying Contracts to the Amoy Testnet**
 
-With contracts written and Hardhat configured, proceed to deploy them to the Mumbai Testnet.
+With contracts written and Hardhat configured, proceed to deploy them to the **Amoy Testnet**.
 
 ### **7.1. Writing Deployment Scripts**
 
@@ -1073,19 +1080,21 @@ Copy code
   `const COIN100Token = await hre.ethers.getContractFactory("COIN100Token");`
 
 
-  `// Replace the following addresses with your testnet wallet addresses`
+  `// Wallet Addresses`
 
-  `const developerTreasury = "0xYourDeveloperTreasuryAddress";`
+  `const developerTreasury = "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"; // Coin100DeveloperTreasury`
 
-  `const liquidityPool = "0xYourLiquidityPoolAddress";`
+  `const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // Coin100LiquidityPool`
 
-  `const marketingWallet = "0xYourMarketingWalletAddress";`
+  `const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // Coin100Marketing`
 
-  `const stakingRewards = "0xYourStakingRewardsAddress";`
+  `const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // Coin100StakingRewards`
 
-  `const communityTreasury = "0xYourCommunityTreasuryAddress";`
+  `const communityTreasury = "0xYourCommunityTreasuryAddress"; // Replace with actual Community Treasury address`
 
-  `const reserveWallet = "0xYourReserveWalletAddress";`
+  `const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // Coin100ReserveWallet`
+
+  `// Deploy COIN100Token`
 
   `const coin100 = await COIN100Token.deploy(`
 
@@ -1111,7 +1120,7 @@ Copy code
 
   `const DeveloperTreasury = await hre.ethers.getContractFactory("DeveloperTreasury");`
 
-  `const developerTreasuryContract = await DeveloperTreasury.deploy(coin100.address, hre.ethers.utils.parseUnits("100000000", 18));`
+  `const developerTreasuryContract = await DeveloperTreasury.deploy(coin100.address, hre.ethers.utils.parseUnits("100000000", 18)); // 100,000,000 COIN100`
 
   `await developerTreasuryContract.deployed();`
 
@@ -1153,24 +1162,29 @@ Copy code
 
 **Explanation:**
 
-* **Deploying COIN100Token:**  
-  * Passes the addresses of the respective wallets as constructor parameters.  
-* **Deploying DeveloperTreasury:**  
-  * Passes the COIN100 token address and the total allocation (100,000,000 COIN100) with proper decimal places.  
-* **Deploying CommunityGovernance:**  
-  * Passes the COIN100 token address, Community Treasury address, and the required number of votes to execute a proposal.  
-* **Deploying StakingRewards:**  
-  * Configured to stake COIN100 tokens for rewards.
+* **Wallet Addresses:**  
+  1. **COIN100 Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
+  2. **Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
+  3. **Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
+  4. **Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
+  5. **Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
+  6. **Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`  
+  7. **Community Treasury Wallet:** `0xYourCommunityTreasuryAddress` *(Replace with actual address)*  
+* **Deployment Steps:**  
+  1. **COIN100Token:** Deploys the main token contract with specified allocations.  
+  2. **DeveloperTreasury:** Deploys the vesting contract for the Developer Treasury with a total allocation of 100,000,000 COIN100.  
+  3. **CommunityGovernance:** Deploys the governance contract for the Community Treasury, requiring 100 votes to execute proposals.  
+  4. **StakingRewards:** Deploys the staking rewards contract, allowing users to stake COIN100 tokens to earn rewards.
 
 ### **7.2. Deploying Contracts**
 
 1. **Ensure Testnet MATIC Availability:**  
-   * Verify that your **Project Owner Wallet** has sufficient testnet MATIC.
+   * Verify that your **COIN100 Owner Wallet** (`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`) has sufficient testnet MATIC on the Amoy Testnet for deployment costs.
 
 **Run the Deployment Script:**  
 bash  
 Copy code  
-`npx hardhat run scripts/deploy.js --network mumbai`
+`npx hardhat run scripts/deploy.js --network amoy`
 
 2.   
 3. **Output:**  
@@ -1190,13 +1204,13 @@ Copy code
 
 ### **7.3. Verify Deployments**
 
-1. **Check on Polygonscan (Mumbai):**  
-   * Visit Polygonscan Mumbai Testnet.  
+1. **Check on Amoy Testnet Explorer:**  
+   * Visit the Amoy Testnet blockchain explorer *(Replace with the actual Amoy Testnet explorer URL)*.  
    * Enter the deployed contract addresses to view contract details and verify successful deployment.
 
 ---
 
-## **8\. Testing Smart Contracts on the Mumbai Testnet**
+## **8\. Testing Smart Contracts on the Amoy Testnet**
 
 Thorough testing ensures that all functionalities work as intended before deploying to the mainnet.
 
@@ -1246,17 +1260,17 @@ Copy code
 
     `coin100 = await COIN100Token.deploy(`
 
-      `developerTreasury.address,`
+      `developerTreasury.address, // Developer Treasury`
 
-      `liquidityPool.address,`
+      `liquidityPool.address,     // Liquidity Pool`
 
-      `marketingWallet.address,`
+      `marketingWallet.address,   // Marketing Wallet`
 
-      `stakingRewards.address,`
+      `stakingRewards.address,    // Staking Rewards`
 
-      `communityTreasury.address,`
+      `communityTreasury.address,// Community Treasury`
 
-      `reserveWallet.address`
+      `reserveWallet.address      // Reserve Wallet`
 
     `);`
 
@@ -1312,11 +1326,11 @@ Copy code
 
     `const transferFee = ethers.utils.parseUnits("3", 18); // 0.3% of 1000`
 
-    `const developerFee = ethers.utils.parseUnits("2", 18); // 0.2%`
+    `const developerFee = ethers.utils.parseUnits("0.6", 18); // 0.2% of 1000`
 
-    `const liquidityFee = ethers.utils.parseUnits("1.6", 18); // 0.16%`
+    `const liquidityFee = ethers.utils.parseUnits("0.48", 18); // 0.16% of 1000`
 
-    `const communityFee = ethers.utils.parseUnits("1.2", 18); // 0.12%`
+    `const communityFee = ethers.utils.parseUnits("0.36", 18); // 0.12% of 1000`
 
     `const receivedAmount = ethers.utils.parseUnits("997", 18); // 1000 - 3`
 
@@ -1394,7 +1408,7 @@ Copy code
 
   `5 passing (X.Xs)`
 
-### **8.3. Manual Testing on Mumbai Testnet**
+### **8.3. Manual Testing on Amoy Testnet**
 
 Beyond automated tests, it's beneficial to perform manual testing to interact with deployed contracts.
 
@@ -1403,7 +1417,7 @@ Beyond automated tests, it's beneficial to perform manual testing to interact wi
 **Open Hardhat Console:**  
 bash  
 Copy code  
-`npx hardhat console --network mumbai`
+`npx hardhat console --network amoy`
 
 1. 
 
@@ -1414,7 +1428,7 @@ Copy code
 
 `const COIN100Token = await ethers.getContractFactory("COIN100Token");`
 
-`const coin100 = await COIN100Token.attach("DEPLOYED_COIN100_ADDRESS");`
+`const coin100 = await COIN100Token.attach("DEPLOYED_COIN100_ADDRESS"); // Replace with actual COIN100Token address`
 
 `// Check balances`
 
@@ -1434,10 +1448,26 @@ Copy code
 3. **Verify Fee Distribution:**  
    * Check the balances of Developer Treasury, Liquidity Pool, and Community Treasury to ensure fees are correctly distributed.
 
-#### **8.3.2. Using Polygonscan Interface**
+javascript  
+Copy code  
+`const developerTreasuryBalance = await coin100.balanceOf("0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"); // Developer Treasury`
+
+`const liquidityPoolBalance = await coin100.balanceOf("0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"); // Liquidity Pool`
+
+`const communityTreasuryBalance = await coin100.balanceOf("0xYourCommunityTreasuryAddress"); // Community Treasury`
+
+`console.log("Developer Treasury Balance:", ethers.utils.formatUnits(developerTreasuryBalance, 18));`
+
+`console.log("Liquidity Pool Balance:", ethers.utils.formatUnits(liquidityPoolBalance, 18));`
+
+`console.log("Community Treasury Balance:", ethers.utils.formatUnits(communityTreasuryBalance, 18));`
+
+4. 
+
+#### **8.3.2. Using Amoy Testnet Explorer Interface**
 
 1. **View Transactions:**  
-   * Navigate to the contract address on Polygonscan Mumbai.  
+   * Navigate to the contract address on the Amoy Testnet blockchain explorer *(Replace with the actual Amoy Testnet explorer URL)*.  
    * Review transactions to ensure proper functionality.  
 2. **Interact with Contracts:**  
    * Use the **"Write Contract"** and **"Read Contract"** tabs to manually invoke and verify contract functions.
@@ -1465,7 +1495,7 @@ For enhanced security, especially for Treasury wallets, consider implementing mu
 1. **Choose a Multi-Sig Solution:**  
    * **Gnosis Safe** is a popular choice on the Polygon network.  
 2. **Deploy Multi-Sig Wallet:**  
-   * Visit [Gnosis Safe](https://gnosis-safe.io/) and create a new Safe on the Mumbai Testnet.  
+   * Visit [Gnosis Safe](https://gnosis-safe.io/) and create a new Safe on the Amoy Testnet.  
    * Define the required number of signatures (e.g., 2 out of 3\) for transactions.  
 3. **Assign Roles:**  
    * Assign trusted team members as signatories for critical wallets.  
@@ -1485,7 +1515,7 @@ For enhanced security, especially for Treasury wallets, consider implementing mu
 
 ## **10\. Finalizing and Preparing for Mainnet Deployment**
 
-After successful testing on the Mumbai Testnet, prepare for deploying to the Polygon Mainnet.
+After successful testing on the Amoy Testnet, prepare for deploying to the Polygon Mainnet.
 
 ### **10.1. Review and Optimize Contracts**
 
@@ -1515,9 +1545,9 @@ Copy code
 
     `},`
 
-    `mumbai: {`
+    `amoy: {`
 
-      `url: process.env.MUMBAI_RPC_URL,`
+      `url: process.env.AMOY_RPC_URL,`
 
       ``accounts: [`0x${process.env.PRIVATE_KEY}`],``
 
@@ -1531,10 +1561,21 @@ Copy code
 2. **Set Mainnet RPC URL and Private Key:**  
    * Update the `.env` file with `POLYGON_RPC_URL` and ensure the private key corresponds to a secure mainnet wallet.
 
+**.env**  
+env  
+Copy code  
+`POLYGON_RPC_URL=https://polygon-mainnet.rpc.url # Replace with actual Polygon Mainnet RPC URL`
+
+`AMOY_RPC_URL=https://amoy-testnet.rpc.url # Replace with actual Amoy Testnet RPC URL`
+
+`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet`
+
+3. 
+
 ### **10.3. Deploy to Polygon Mainnet**
 
 1. **Fund Mainnet Wallet:**  
-   * Ensure your **Project Owner Wallet** has sufficient MATIC for deployment costs.
+   * Ensure your **COIN100 Owner Wallet** (`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`) has sufficient MATIC for deployment costs.
 
 **Run Deployment Script:**  
 bash  
