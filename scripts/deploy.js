@@ -9,7 +9,7 @@ async function main() {
   const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // COIN100 Liquidity Pool
   const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // COIN100 Marketing
   const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // COIN100 Staking Rewards
-  const communityTreasury = "0xYourActualCommunityTreasuryAddress"; // COIN100 Community Treasury - **Replace with actual address**
+  const communityTreasury = "0x230e226780A3C38bB1ea61Ae6616063b860c1c45"; // COIN100 Community Treasury - **Replace with actual address**
   const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // COIN100 Reserve Wallet
 
   // Validate Addresses
