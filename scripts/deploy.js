@@ -1,41 +1,40 @@
 const hre = require("hardhat");
 
 async function main() {
-  // Deploy COIN100Token
-  const COIN100Token = await hre.ethers.getContractFactory("COIN100Token");
-  
-  // Wallet Addresses - Replace these with actual addresses
-  const developerTreasury = "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"; // COIN100 Developer Treasury
-  const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // COIN100 Liquidity Pool
-  const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // COIN100 Marketing
-  const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // COIN100 Staking Rewards
-  const communityTreasury = "0x230e226780A3C38bB1ea61Ae6616063b860c1c45"; // COIN100 Community Treasury - **Replace with actual address**
-  const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // COIN100 Reserve Wallet
+  // Fetch the deployer's account from Hardhat (coin100owner)
+  const [deployer] = await hre.ethers.getSigners();
+  console.log("Deploying contracts with the account:", deployer.address);
 
-  // Validate Addresses
-  const addresses = [
-    developerTreasury,
-    liquidityPool,
-    marketingWallet,
-    stakingRewards,
-    communityTreasury,
-    reserveWallet,
-  ];
+  // Display the deployer's balance
+  const balance = await deployer.getBalance();
+  console.log("Deployer Balance:", hre.ethers.utils.formatEther(balance), "MATIC");
 
-  for (const address of addresses) {
+  // Define wallet addresses
+  const wallets = {
+    developerTreasury: "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60", // COIN100 Developer Treasury
+    liquidityPool: "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0",     // COIN100 Liquidity Pool
+    marketingWallet: "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a",   // COIN100 Marketing
+    stakingRewards: "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8",    // COIN100 Staking Rewards
+    communityTreasury: "0x230e226780A3C38bB1ea61Ae6616063b860c1c45", // COIN100 Community Treasury
+    reserveWallet: "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9",      // COIN100 Reserve Wallet
+  };
+
+  // Validate all addresses
+  for (const [name, address] of Object.entries(wallets)) {
     if (!hre.ethers.utils.isAddress(address)) {
-      throw new Error(`Invalid address detected: ${address}`);
+      throw new Error(`Invalid address for ${name}: ${address}`);
     }
   }
 
   // Deploy COIN100Token
+  const COIN100Token = await hre.ethers.getContractFactory("COIN100Token");
   const coin100 = await COIN100Token.deploy(
-    developerTreasury,   // COIN100 Developer Treasury
-    liquidityPool,       // COIN100 Liquidity Pool
-    marketingWallet,     // COIN100 Marketing
-    stakingRewards,      // COIN100 Staking Rewards
-    communityTreasury,   // COIN100 Community Treasury
-    reserveWallet        // COIN100 Reserve Wallet
+    wallets.developerTreasury,
+    wallets.liquidityPool,
+    wallets.marketingWallet,
+    wallets.stakingRewards,
+    wallets.communityTreasury,
+    wallets.reserveWallet
   );
 
   await coin100.deployed();
@@ -55,7 +54,7 @@ async function main() {
   const COIN100CommunityGovernance = await hre.ethers.getContractFactory("COIN100CommunityGovernance");
   const communityGovernance = await COIN100CommunityGovernance.deploy(
     coin100.address,
-    communityTreasury,
+    wallets.communityTreasury,
     100 // Example: 100 required votes
   );
 
