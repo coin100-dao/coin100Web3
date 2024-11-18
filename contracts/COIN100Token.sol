@@ -69,15 +69,15 @@ contract COIN100Token is ERC20, Ownable {
 
         // Distribute tokens to respective wallets
         _transfer(address(this), owner(), publicSaleAmount); // COIN100 Owner
-        _transfer(address(this), developerTreasury, developerAmount); // Developer Treasury
-        _transfer(address(this), liquidityPool, liquidityAmount); // Liquidity Pool
-        _transfer(address(this), marketingWallet, marketingAmount); // Marketing Wallet
-        _transfer(address(this), stakingRewards, stakingAmount); // Staking Rewards
-        _transfer(address(this), communityTreasury, communityAmount); // Community Treasury
-        _transfer(address(this), reserveWallet, reserveAmount); // Reserve Wallet
+        _transfer(address(this), developerTreasury, developerAmount); // COIN100 Developer Treasury
+        _transfer(address(this), liquidityPool, liquidityAmount); // COIN100 Liquidity Pool
+        _transfer(address(this), marketingWallet, marketingAmount); // COIN100 Marketing
+        _transfer(address(this), stakingRewards, stakingAmount); // COIN100 Staking Rewards
+        _transfer(address(this), communityTreasury, communityAmount); // COIN100 Community Governance
+        _transfer(address(this), reserveWallet, reserveAmount); // COIN100 Reserve Wallet
     }
 
-    // Override the transfer function to include fees
+    // Override the _transfer function to include fees
     function _transfer(
         address sender,
         address recipient,

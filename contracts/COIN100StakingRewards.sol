@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -45,6 +45,7 @@ contract COIN100StakingRewards is Ownable {
 
     function withdraw(uint256 amount) public updateReward(msg.sender) {
         require(amount > 0, "Cannot withdraw 0");
+        require(_balances[msg.sender] >= amount, "Insufficient balance");
         _totalSupply -= amount;
         _balances[msg.sender] -= amount;
         require(stakingToken.transfer(msg.sender, amount), "Transfer failed");

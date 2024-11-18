@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -13,7 +13,7 @@ contract COIN100DeveloperTreasury is Ownable {
 
     event TokensReleased(uint256 amount);
 
-    constructor(address _coin100, address _communityTreasury, uint256 _requiredVotes) {
+    constructor(address _coin100, uint256 _totalAllocation) {
         require(_coin100 != address(0), "Invalid COIN100 address");
         coin100 = IERC20(_coin100);
         totalAllocation = _totalAllocation;
