@@ -1,6 +1,6 @@
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-ethers");
-require("@nomiclabs/hardhat-etherscan");
+require("@nomicfoundation/hardhat-verify");
 require("dotenv").config();
 
 module.exports = {
@@ -26,6 +26,6 @@ module.exports = {
     },
   },
   etherscan: {
-    apiKey: process.env.POLYGON_ETHERSCAN_API_KEY, // Add your Polygon Etherscan API Key
+    apiKey: process.env.POLYGON_ETHERSCAN_API_KEY, // For verification on Polygon Etherscan
   },
 };
