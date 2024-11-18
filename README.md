@@ -9,15 +9,14 @@
    * 3.4. Install Essential Libraries  
 4. Creating and Managing Wallets  
    * 4.1. Choose a Wallet Provider  
-   * 4.2. Create the Project Owner Wallet  
-   * 4.3. Create Additional Wallets for Specific Roles  
-   * 4.4. Fund the Wallets on the Testnet  
+   * 4.2. Import and Rename Wallets  
+   * 4.3. Fund the Wallets on the Testnet  
 5. Writing the Solidity Smart Contracts  
    * 5.1. Project Structure Overview  
    * 5.2. Writing the COIN100 Token Contract  
-   * 5.3. Writing the Developer Treasury Vesting Contract  
-   * 5.4. Writing the Community Governance Contract  
-   * 5.5. Writing the Staking Rewards Contract  
+   * 5.3. Writing the COIN100 Developer Treasury Vesting Contract  
+   * 5.4. Writing the COIN100 Community Governance Contract  
+   * 5.5. Writing the COIN100 Staking Rewards Contract  
 6. Configuring Hardhat for Deployment  
    * 6.1. Update `hardhat.config.js`  
    * 6.2. Set Up Environment Variables  
@@ -193,70 +192,53 @@ For development and testing purposes, **MetaMask** is highly recommended due to 
 * **Download MetaMask:**  
   * Visit the [MetaMask website](https://metamask.io/) and install the extension for your browser.
 
-### **4.2. Create the Project Owner Wallet**
+### **4.2. Import and Rename Wallets**
 
-This wallet will act as the primary controller of the project, holding administrative privileges.
+Since you have specific wallet addresses for each role, you can import them directly into MetaMask if you have their private keys or seed phrases.
 
-1. **Install MetaMask:**  
-   * After installation, open the MetaMask extension.  
-2. **Import Existing Wallet:**  
-   * Since you have a specific wallet address for the project owner, you likely already have the private key or seed phrase.  
-   * Click on **"Import Wallet"** instead of creating a new one.  
-   * Follow the prompts to import using your seed phrase or private key.  
-3. **Rename the Wallet:**  
-   * Click on the account name (e.g., "Account 1") and rename it to **"COIN100 Owner"** for clarity.
+**Wallet Addresses for Reference:**
 
-**Project Owner Wallet Address:**
-
-Copy code
-
+**COIN100 Owner Wallet:**  
+Copy code  
 `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`
 
-### **4.3. Create Additional Wallets for Specific Roles**
+* 
 
-For better security and organization, it's advisable to create separate wallets for different allocations. Here's how to set them up:
-
-**Note:** Since you have specific wallet addresses for each role, you can import them directly into MetaMask if you have their private keys or seed phrases.
-
-#### **a. Developer Treasury Wallet**
-
-**Developer Treasury Wallet Address:**
-
-Copy code
-
+**COIN100 Developer Treasury Wallet:**  
+Copy code  
 `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`
 
-#### **b. Liquidity Pool Wallet**
+* 
 
-**Liquidity Pool Wallet Address:**
-
-Copy code
-
+**COIN100 Liquidity Pool Wallet:**  
+Copy code  
 `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`
 
-#### **c. Marketing Wallet**
+* 
 
-**Marketing Wallet Address:**
-
-Copy code
-
+**COIN100 Marketing Wallet:**  
+Copy code  
 `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`
 
-#### **d. Staking Rewards Wallet**
+* 
 
-**Staking Rewards Wallet Address:**
-
-Copy code
-
+**COIN100 Staking Rewards Wallet:**  
+Copy code  
 `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`
 
-#### **e. Reserve Wallet**
+* 
 
-**Reserve Wallet Address:**
-
-Copy code
-
+**COIN100 Reserve Wallet:**  
+Copy code  
 `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`
+
+* 
+
+**COIN100 Community Treasury Wallet:**  
+Copy code  
+`0xYourCommunityTreasuryAddress`
+
+* *(Replace `0xYourCommunityTreasuryAddress` with the actual Community Treasury wallet address.)*
 
 **Steps to Import Each Wallet:**
 
@@ -267,13 +249,15 @@ Copy code
    * Enter the private key or upload the JSON file for the respective wallet.  
 2. **Rename the Wallet:**  
    * After importing, rename each account accordingly:  
-     * **Developer Treasury**  
-     * **Liquidity Pool**  
-     * **Marketing Wallet**  
-     * **Staking Rewards**  
-     * **Reserve Wallet**
+     * **COIN100 Owner**  
+     * **COIN100 Developer Treasury**  
+     * **COIN100 Liquidity Pool**  
+     * **COIN100 Marketing**  
+     * **COIN100 Staking Rewards**  
+     * **COIN100 Reserve**  
+     * **COIN100 Community Treasury**
 
-### **4.4. Fund the Wallets on the Testnet**
+### **4.3. Fund the Wallets on the Testnet**
 
 Before deploying contracts, ensure each wallet has sufficient testnet MATIC for gas fees.
 
@@ -284,12 +268,13 @@ Before deploying contracts, ensure each wallet has sufficient testnet MATIC for 
 2. **Obtain Test MATIC:**  
    * Visit the Amoy Testnet Faucet *(Replace with the actual Amoy Testnet faucet URL)* to request test MATIC.  
    * Enter each wallet address and request funds sequentially:  
-     * **Project Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
-     * **Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
-     * **Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
-     * **Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
-     * **Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
-     * **Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`
+     * **COIN100 Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
+     * **COIN100 Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
+     * **COIN100 Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
+     * **COIN100 Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
+     * **COIN100 Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
+     * **COIN100 Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`  
+     * **COIN100 Community Treasury Wallet:** `0xYourCommunityTreasuryAddress` *(Replace `0xYourCommunityTreasuryAddress` with the actual Community Treasury wallet address.)*
 
 ---
 
@@ -311,11 +296,11 @@ Copy code
 
 `│   ├── COIN100Token.sol`
 
-`│   ├── DeveloperTreasury.sol`
+`│   ├── COIN100DeveloperTreasury.sol`
 
-`│   ├── CommunityGovernance.sol`
+`│   ├── COIN100CommunityGovernance.sol`
 
-`│   └── StakingRewards.sol`
+`│   └── COIN100StakingRewards.sol`
 
 `├── scripts/`
 
@@ -467,7 +452,7 @@ Copy code
 
         `// Distribute tokens to respective wallets`
 
-        `_transfer(address(this), msg.sender, publicSaleAmount); // COIN100 Owner`
+        `_transfer(address(this), owner(), publicSaleAmount); // COIN100 Owner`
 
         `_transfer(address(this), developerTreasury, developerAmount); // Developer Treasury`
 
@@ -566,14 +551,14 @@ Copy code
 * **ERC20 and Ownable Inheritance:** The `COIN100Token` contract inherits from OpenZeppelin's `ERC20` and `Ownable` contracts to leverage standard token functionalities and ownership control.  
 * **Total Supply and Allocations:** The total supply is set to 1,000,000,000 COIN100 tokens with specified allocation percentages.  
 * **Allocation Distribution:** Upon deployment, the contract mints the total supply to itself and then distributes the tokens to the respective wallets based on the defined percentages.  
-* **Transfer Fees:** The `_transfer` function is overridden to implement a 0.3% fee on all transfers, which is then distributed to the Developer Treasury, Liquidity Pool, and Community Treasury based on the specified fee percentages.  
+* **Transfer Fees:** The `_transfer` function is overridden to implement a 0.3% fee on all transfers, which is then distributed to the COIN100 Developer Treasury, Liquidity Pool, and Community Treasury based on the specified fee percentages.  
 * **Fee Management:** Functions are provided to update transfer fees, which are restricted to the contract owner.
 
-### **5.3. Writing the Developer Treasury Vesting Contract**
+### **5.3. Writing the COIN100 Developer Treasury Vesting Contract**
 
-To handle the vesting schedule for the Developer Treasury, create `DeveloperTreasury.sol` in the `contracts/` directory.
+To handle the vesting schedule for the COIN100 Developer Treasury, create `COIN100DeveloperTreasury.sol` in the `contracts/` directory.
 
-**DeveloperTreasury.sol**
+**COIN100DeveloperTreasury.sol**
 
 solidity
 
@@ -587,7 +572,7 @@ Copy code
 
 `import "@openzeppelin/contracts/access/Ownable.sol";`
 
-`contract DeveloperTreasury is Ownable {`
+`contract COIN100DeveloperTreasury is Ownable {`
 
     `IERC20 public coin100;`
 
@@ -665,19 +650,19 @@ Copy code
 
 **Explanation:**
 
-* **Vesting Logic:** The contract releases tokens linearly over 2 years (730 days). The `release` function can be called by the owner to transfer vested tokens to the Developer Treasury.  
+* **Vesting Logic:** The contract releases tokens linearly over 2 years (730 days). The `release` function can be called by the owner to transfer vested tokens to the COIN100 Developer Treasury.  
 * **State Variables:**  
   * `coin100`: The COIN100 token contract.  
   * `vestingStart`: Timestamp when vesting starts.  
   * `vestingDuration`: Total vesting period.  
-  * `totalAllocation`: Total tokens allocated to the Developer Treasury.  
+  * `totalAllocation`: Total tokens allocated to the COIN100 Developer Treasury.  
   * `released`: Tokens already released.
 
-### **5.4. Writing the Community Governance Contract**
+### **5.4. Writing the COIN100 Community Governance Contract**
 
-To enable decentralized governance over the Community Treasury, create `CommunityGovernance.sol`.
+To enable decentralized governance over the COIN100 Community Treasury, create `COIN100CommunityGovernance.sol`.
 
-**CommunityGovernance.sol**
+**COIN100CommunityGovernance.sol**
 
 solidity
 
@@ -691,7 +676,7 @@ Copy code
 
 `import "@openzeppelin/contracts/access/Ownable.sol";`
 
-`contract CommunityGovernance is Ownable {`
+`contract COIN100CommunityGovernance is Ownable {`
 
     `IERC20 public coin100;`
 
@@ -806,7 +791,7 @@ Copy code
 * **Proposal Mechanism:** Users can create proposals, vote on them, and execute them if the required number of votes is met.  
 * **State Variables:**  
   * `coin100`: The COIN100 token contract.  
-  * `communityTreasury`: Address of the Community Treasury.  
+  * `communityTreasury`: Address of the COIN100 Community Treasury.  
   * `proposals`: Mapping to track proposals.  
   * `proposalCount`: Total number of proposals.  
   * `requiredVotes`: Number of votes required to execute a proposal.  
@@ -816,11 +801,11 @@ Copy code
   * `executeProposal`: Executes the proposal if the required votes are met.  
   * `setRequiredVotes`: Allows the owner to set the number of required votes.
 
-### **5.5. Writing the Staking Rewards Contract**
+### **5.5. Writing the COIN100 Staking Rewards Contract**
 
-To incentivize users to stake their COIN100 tokens, create `StakingRewards.sol`.
+To incentivize users to stake their COIN100 tokens, create `COIN100StakingRewards.sol`.
 
-**StakingRewards.sol**
+**COIN100StakingRewards.sol**
 
 solidity
 
@@ -834,7 +819,7 @@ Copy code
 
 `import "@openzeppelin/contracts/access/Ownable.sol";`
 
-`contract StakingRewards is Ownable {`
+`contract COIN100StakingRewards is Ownable {`
 
     `IERC20 public coin100;`
 
@@ -1035,7 +1020,7 @@ Copy code
 
 `AMOY_RPC_URL=https://amoy-testnet.rpc.url # Replace with the actual Amoy Testnet RPC URL`
 
-`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet`
+`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet (0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C)`
 
 **Important:**
 
@@ -1082,33 +1067,33 @@ Copy code
 
   `// Wallet Addresses`
 
-  `const developerTreasury = "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"; // Coin100DeveloperTreasury`
+  `const developerTreasury = "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"; // COIN100 Developer Treasury`
 
-  `const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // Coin100LiquidityPool`
+  `const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // COIN100 Liquidity Pool`
 
-  `const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // Coin100Marketing`
+  `const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // COIN100 Marketing`
 
-  `const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // Coin100StakingRewards`
+  `const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // COIN100 Staking Rewards`
 
-  `const communityTreasury = "0xYourCommunityTreasuryAddress"; // Replace with actual Community Treasury address`
+  `const communityTreasury = "0xYourCommunityTreasuryAddress"; // COIN100 Community Treasury`
 
-  `const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // Coin100ReserveWallet`
+  `const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // COIN100 Reserve Wallet`
 
   `// Deploy COIN100Token`
 
   `const coin100 = await COIN100Token.deploy(`
 
-    `developerTreasury,`
+    `developerTreasury,   // COIN100 Developer Treasury`
 
-    `liquidityPool,`
+    `liquidityPool,       // COIN100 Liquidity Pool`
 
-    `marketingWallet,`
+    `marketingWallet,     // COIN100 Marketing`
 
-    `stakingRewards,`
+    `stakingRewards,      // COIN100 Staking Rewards`
 
-    `communityTreasury,`
+    `communityTreasury,   // COIN100 Community Treasury`
 
-    `reserveWallet`
+    `reserveWallet        // COIN100 Reserve Wallet`
 
   `);`
 
@@ -1116,35 +1101,55 @@ Copy code
 
   `console.log("COIN100Token deployed to:", coin100.address);`
 
-  `// Deploy DeveloperTreasury`
+  `// Deploy COIN100DeveloperTreasury`
 
-  `const DeveloperTreasury = await hre.ethers.getContractFactory("DeveloperTreasury");`
+  `const COIN100DeveloperTreasury = await hre.ethers.getContractFactory("COIN100DeveloperTreasury");`
 
-  `const developerTreasuryContract = await DeveloperTreasury.deploy(coin100.address, hre.ethers.utils.parseUnits("100000000", 18)); // 100,000,000 COIN100`
+  `const developerTreasuryContract = await COIN100DeveloperTreasury.deploy(`
+
+    `coin100.address,`
+
+    `hre.ethers.utils.parseUnits("100000000", 18) // 100,000,000 COIN100`
+
+  `);`
 
   `await developerTreasuryContract.deployed();`
 
-  `console.log("DeveloperTreasury deployed to:", developerTreasuryContract.address);`
+  `console.log("COIN100DeveloperTreasury deployed to:", developerTreasuryContract.address);`
 
-  `// Deploy CommunityGovernance`
+  `// Deploy COIN100CommunityGovernance`
 
-  `const CommunityGovernance = await hre.ethers.getContractFactory("CommunityGovernance");`
+  `const COIN100CommunityGovernance = await hre.ethers.getContractFactory("COIN100CommunityGovernance");`
 
-  `const communityGovernance = await CommunityGovernance.deploy(coin100.address, communityTreasury, 100); // Example: 100 required votes`
+  `const communityGovernance = await COIN100CommunityGovernance.deploy(`
+
+    `coin100.address,`
+
+    `communityTreasury,`
+
+    `100 // Example: 100 required votes`
+
+  `);`
 
   `await communityGovernance.deployed();`
 
-  `console.log("CommunityGovernance deployed to:", communityGovernance.address);`
+  `console.log("COIN100CommunityGovernance deployed to:", communityGovernance.address);`
 
-  `// Deploy StakingRewards`
+  `// Deploy COIN100StakingRewards`
 
-  `const StakingRewards = await hre.ethers.getContractFactory("StakingRewards");`
+  `const COIN100StakingRewards = await hre.ethers.getContractFactory("COIN100StakingRewards");`
 
-  `const stakingRewardsContract = await StakingRewards.deploy(coin100.address, coin100.address); // Staking COIN100`
+  `const stakingRewardsContract = await COIN100StakingRewards.deploy(`
+
+    `coin100.address,`
+
+    `coin100.address // Staking COIN100`
+
+  `);`
 
   `await stakingRewardsContract.deployed();`
 
-  `console.log("StakingRewards deployed to:", stakingRewardsContract.address);`
+  `console.log("COIN100StakingRewards deployed to:", stakingRewardsContract.address);`
 
 `}`
 
@@ -1164,17 +1169,17 @@ Copy code
 
 * **Wallet Addresses:**  
   1. **COIN100 Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
-  2. **Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
-  3. **Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
-  4. **Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
-  5. **Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
-  6. **Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`  
-  7. **Community Treasury Wallet:** `0xYourCommunityTreasuryAddress` *(Replace with actual address)*  
+  2. **COIN100 Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
+  3. **COIN100 Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
+  4. **COIN100 Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
+  5. **COIN100 Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
+  6. **COIN100 Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`  
+  7. **COIN100 Community Treasury Wallet:** `0xYourCommunityTreasuryAddress` *(Replace with actual address)*  
 * **Deployment Steps:**  
   1. **COIN100Token:** Deploys the main token contract with specified allocations.  
-  2. **DeveloperTreasury:** Deploys the vesting contract for the Developer Treasury with a total allocation of 100,000,000 COIN100.  
-  3. **CommunityGovernance:** Deploys the governance contract for the Community Treasury, requiring 100 votes to execute proposals.  
-  4. **StakingRewards:** Deploys the staking rewards contract, allowing users to stake COIN100 tokens to earn rewards.
+  2. **COIN100DeveloperTreasury:** Deploys the vesting contract for the COIN100 Developer Treasury with a total allocation of 100,000,000 COIN100.  
+  3. **COIN100CommunityGovernance:** Deploys the governance contract for the COIN100 Community Treasury, requiring 100 votes to execute proposals.  
+  4. **COIN100StakingRewards:** Deploys the staking rewards contract, allowing users to stake COIN100 tokens to earn rewards.
 
 ### **7.2. Deploying Contracts**
 
@@ -1194,11 +1199,11 @@ vbnet
 Copy code  
 `COIN100Token deployed to: 0x...`
 
-`DeveloperTreasury deployed to: 0x...`
+`COIN100DeveloperTreasury deployed to: 0x...`
 
-`CommunityGovernance deployed to: 0x...`
+`COIN100CommunityGovernance deployed to: 0x...`
 
-`StakingRewards deployed to: 0x...`
+`COIN100StakingRewards deployed to: 0x...`
 
 4. 
 
@@ -1260,17 +1265,17 @@ Copy code
 
     `coin100 = await COIN100Token.deploy(`
 
-      `developerTreasury.address, // Developer Treasury`
+      `developerTreasury.address, // COIN100 Developer Treasury`
 
-      `liquidityPool.address,     // Liquidity Pool`
+      `liquidityPool.address,     // COIN100 Liquidity Pool`
 
-      `marketingWallet.address,   // Marketing Wallet`
+      `marketingWallet.address,   // COIN100 Marketing`
 
-      `stakingRewards.address,    // Staking Rewards`
+      `stakingRewards.address,    // COIN100 Staking Rewards`
 
-      `communityTreasury.address,// Community Treasury`
+      `communityTreasury.address,// COIN100 Community Governance`
 
-      `reserveWallet.address      // Reserve Wallet`
+      `reserveWallet.address      // COIN100 Reserve Wallet`
 
     `);`
 
@@ -1446,15 +1451,15 @@ Copy code
 
 2.   
 3. **Verify Fee Distribution:**  
-   * Check the balances of Developer Treasury, Liquidity Pool, and Community Treasury to ensure fees are correctly distributed.
+   * Check the balances of COIN100 Developer Treasury, Liquidity Pool, and Community Treasury to ensure fees are correctly distributed.
 
 javascript  
 Copy code  
-`const developerTreasuryBalance = await coin100.balanceOf("0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"); // Developer Treasury`
+`const developerTreasuryBalance = await coin100.balanceOf("0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"); // COIN100 Developer Treasury`
 
-`const liquidityPoolBalance = await coin100.balanceOf("0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"); // Liquidity Pool`
+`const liquidityPoolBalance = await coin100.balanceOf("0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"); // COIN100 Liquidity Pool`
 
-`const communityTreasuryBalance = await coin100.balanceOf("0xYourCommunityTreasuryAddress"); // Community Treasury`
+`const communityTreasuryBalance = await coin100.balanceOf("0xYourCommunityTreasuryAddress"); // COIN100 Community Governance`
 
 `console.log("Developer Treasury Balance:", ethers.utils.formatUnits(developerTreasuryBalance, 18));`
 
@@ -1481,7 +1486,7 @@ Proper wallet management is crucial for the security and smooth operation of the
 ### **9.1. Securing Private Keys**
 
 1. **Store Securely:**  
-   * Use hardware wallets (e.g., Ledger, Trezor) for storing private keys of critical wallets like Developer Treasury and Community Treasury.  
+   * Use hardware wallets (e.g., Ledger, Trezor) for storing private keys of critical wallets like COIN100 Developer Treasury and COIN100 Community Governance.  
 2. **Backup:**  
    * Ensure that seed phrases are backed up securely and are not stored digitally.  
 3. **Access Control:**  
@@ -1500,7 +1505,8 @@ For enhanced security, especially for Treasury wallets, consider implementing mu
 3. **Assign Roles:**  
    * Assign trusted team members as signatories for critical wallets.  
 4. **Integrate with Contracts:**  
-   * Update the smart contracts to interact with the multi-sig wallets instead of individual addresses.
+   * Update the smart contracts to interact with the multi-sig wallets instead of individual addresses.  
+   * For example, set the `communityTreasury` address in `COIN100CommunityGovernance` to the multi-sig wallet address.
 
 ### **9.3. Monitoring and Maintenance**
 
@@ -1568,7 +1574,7 @@ Copy code
 
 `AMOY_RPC_URL=https://amoy-testnet.rpc.url # Replace with actual Amoy Testnet RPC URL`
 
-`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet`
+`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet (0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C)`
 
 3. 
 
@@ -1592,14 +1598,9 @@ Copy code
    * Use Hardhat's verification plugin or manually verify contracts for transparency.  
 2. **Set Up Frontend Interface:**  
    * Develop a user-friendly frontend to interact with the COIN100 ecosystem.  
+   * Consider using frameworks like React.js along with libraries like Ethers.js or Web3.js.  
 3. **Announce Launch:**  
-   * Communicate the mainnet deployment to your community through official channels.
+   * Communicate the mainnet deployment to your community through official channels such as your website, social media, and cryptocurrency forums.
 
----
-
-## **11\. Conclusion**
-
-Developing **COIN100** involves meticulous planning, secure wallet management, robust smart contract development, and thorough testing. By following the above steps, you ensure that your project is built on a solid foundation, offering a secure and efficient investment vehicle for your users. Remember to continuously engage with your community, stay updated with best practices, and adapt to the evolving blockchain landscape.
-
-Feel free to reach out if you need further assistance or detailed guidance on specific aspects of the project. Happy building\!
+   * 
 

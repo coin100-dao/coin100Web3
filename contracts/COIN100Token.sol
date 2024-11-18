@@ -55,7 +55,7 @@ contract COIN100Token is ERC20, Ownable {
         communityTreasury = _communityTreasury;
         reserveWallet = _reserveWallet;
 
-        // Mint the total supply
+        // Mint the total supply to the contract itself
         _mint(address(this), TOTAL_SUPPLY);
 
         // Distribute allocations
@@ -67,13 +67,14 @@ contract COIN100Token is ERC20, Ownable {
         uint256 communityAmount = (TOTAL_SUPPLY * COMMUNITY_TREASURY_PERCENT) / 100;
         uint256 reserveAmount = (TOTAL_SUPPLY * RESERVE_PERCENT) / 100;
 
-        _transfer(address(this), msg.sender, publicSaleAmount);
-        _transfer(address(this), developerTreasury, developerAmount);
-        _transfer(address(this), liquidityPool, liquidityAmount);
-        _transfer(address(this), marketingWallet, marketingAmount);
-        _transfer(address(this), stakingRewards, stakingAmount);
-        _transfer(address(this), communityTreasury, communityAmount);
-        _transfer(address(this), reserveWallet, reserveAmount);
+        // Distribute tokens to respective wallets
+        _transfer(address(this), msg.sender, publicSaleAmount); // COIN100 Owner
+        _transfer(address(this), developerTreasury, developerAmount); // Developer Treasury
+        _transfer(address(this), liquidityPool, liquidityAmount); // Liquidity Pool
+        _transfer(address(this), marketingWallet, marketingAmount); // Marketing Wallet
+        _transfer(address(this), stakingRewards, stakingAmount); // Staking Rewards
+        _transfer(address(this), communityTreasury, communityAmount); // Community Treasury
+        _transfer(address(this), reserveWallet, reserveAmount); // Reserve Wallet
     }
 
     // Override the transfer function to include fees
