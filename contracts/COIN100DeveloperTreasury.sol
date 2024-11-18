@@ -13,7 +13,7 @@ contract COIN100DeveloperTreasury is Ownable {
 
     event TokensReleased(uint256 amount);
 
-    constructor(address _coin100, uint256 _totalAllocation) {
+    constructor(address _coin100, address _communityTreasury, uint256 _requiredVotes) {
         require(_coin100 != address(0), "Invalid COIN100 address");
         coin100 = IERC20(_coin100);
         totalAllocation = _totalAllocation;
