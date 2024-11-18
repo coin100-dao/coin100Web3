@@ -73,6 +73,15 @@
 * **Community Engagement:** Active discussions and governance proposals on the project website.  
 * **Dynamic Liquidity Provision:** Combines fee-based liquidity addition with incentivized liquidity rewards to build and maintain liquidity without significant upfront investment.
 
+## **Wallets**
+* wallets:
+coin100owner = 0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C
+Coin100DeveloperTreasury = 0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60
+Coin100LiquidityPool = 0x799f59a724Cc6a745083cE8A160ba7D13FD471A0
+Coin100Marketing = 0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a
+Coin100StakingRewards = 0x3D8029660048e7E0a7bD04623802Ab815cc84CF8
+Coin100ReserveWallet = 0xE51edf567dc8162d1EAe53764A864f34deB0DdE9
+
 ---
 
 ## **2\. Prerequisites**
