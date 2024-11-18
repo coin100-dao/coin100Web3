@@ -4,13 +4,29 @@ async function main() {
   // Deploy COIN100Token
   const COIN100Token = await hre.ethers.getContractFactory("COIN100Token");
   
-  // Wallet Addresses
+  // Wallet Addresses - Replace these with actual addresses
   const developerTreasury = "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"; // COIN100 Developer Treasury
   const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // COIN100 Liquidity Pool
   const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // COIN100 Marketing
   const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // COIN100 Staking Rewards
-  const communityTreasury = "0xYourCommunityTreasuryAddress"; // COIN100 Community Treasury
+  const communityTreasury = "0xYourActualCommunityTreasuryAddress"; // COIN100 Community Treasury - **Replace with actual address**
   const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // COIN100 Reserve Wallet
+
+  // Validate Addresses
+  const addresses = [
+    developerTreasury,
+    liquidityPool,
+    marketingWallet,
+    stakingRewards,
+    communityTreasury,
+    reserveWallet,
+  ];
+
+  for (const address of addresses) {
+    if (!hre.ethers.utils.isAddress(address)) {
+      throw new Error(`Invalid address detected: ${address}`);
+    }
+  }
 
   // Deploy COIN100Token
   const coin100 = await COIN100Token.deploy(
