@@ -68,7 +68,7 @@ contract COIN100Token is ERC20, Ownable {
         uint256 reserveAmount = (TOTAL_SUPPLY * RESERVE_PERCENT) / 100;
 
         // Distribute tokens to respective wallets
-        _transfer(address(this), msg.sender, publicSaleAmount); // COIN100 Owner
+        _transfer(address(this), owner(), publicSaleAmount); // COIN100 Owner
         _transfer(address(this), developerTreasury, developerAmount); // Developer Treasury
         _transfer(address(this), liquidityPool, liquidityAmount); // Liquidity Pool
         _transfer(address(this), marketingWallet, marketingAmount); // Marketing Wallet
