@@ -13,6 +13,9 @@ module.exports = {
       },
     },
   },
+  etherscan: {
+    apiKey: process.env.POLYGON_ETHERSCAN_API_KEY, // For verification on Polygon Etherscan
+  },
   networks: {
     amoy: {
       url: process.env.AMOY_RPC_URL,
@@ -24,8 +27,5 @@ module.exports = {
       accounts: [`0x${process.env.PRIVATE_KEY}`],
       chainId: 137, // Polygon Mainnet Chain ID
     },
-  },
-  etherscan: {
-    apiKey: process.env.POLYGON_ETHERSCAN_API_KEY, // For verification on Polygon Etherscan
   },
 };
