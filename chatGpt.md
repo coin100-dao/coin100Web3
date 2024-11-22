@@ -73,6 +73,7 @@ provide full logic and rebalncing and dynamic proice tracking code production re
 Implement logic to adjust COIN100 price based on fetched data
 also there is no more mumbai test net ... its amoy 
 
+dopnt write example or to do code for dynamic tracking and rebalancing .. just write the full production ready algorithm for that 
 remember it's 2024 so make sure you find the latest libs versions ... 
 
 so like in chainlink interface: we only have the following 
