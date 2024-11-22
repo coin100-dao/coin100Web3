@@ -61,4 +61,11 @@ keep in mind initial token sale is at $0.01 , so give e steps to decide that val
 you'll finally give me steps to test both chainlink data logic then the contract locally before we deploy to amoy testnet(do we need balance from faucet?) 
 then deploy to prod 
 dont make it complicated ... this is mvp ..... we need to launch it quick and very very cheap 
+whats the easiest way ( but production ready ) to create a token that tracks topp100 coins ? similar to s&p500 
 
+what needs to be done .. whats the algorithm ... how do we value the initial token launch for 0.01 a token and how we increae its values ? 
+whats the easiest way to dynamically adjust the price based on 100 top coins in market cap and if that market cap changes ? 
+dont use '//your-api-endpoin' just use live coingecko example 
+
+provide the full logic for burrning and minting to track coins and change index value  
+also there is no more mumbai test net ... its amoy 
