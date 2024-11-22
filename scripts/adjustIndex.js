@@ -32,11 +32,11 @@ const provider = new ethers.providers.InfuraProvider(
     process.env.NETWORK || "mainnet",
     process.env.INFURA_PROJECT_ID
 );
-const wallet = new ethers.Wallet(process.env.PRIVATE_KEY as string, provider);
+const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
 
 // Initialize Smart Contract Instance
 const contract = new ethers.Contract(
-    process.env.CONTRACT_ADDRESS as string,
+    process.env.CONTRACT_ADDRESS,
     CONTRACT_ABI,
     wallet
 );
@@ -45,7 +45,7 @@ const contract = new ethers.Contract(
  * Fetches the top 100 cryptocurrencies by market cap from CoinGecko.
  * @returns Total market capitalization of the top 100 cryptocurrencies.
  */
-async function fetchTop100MarketCap(): Promise<number> {
+async function fetchTop100MarketCap() {
     try {
         const response = await axios.get(COINGECKO_API_URL, {
             params: COINGECKO_PARAMS,
@@ -54,7 +54,7 @@ async function fetchTop100MarketCap(): Promise<number> {
         const data = response.data;
         let totalMarketCap = 0;
 
-        data.forEach((coin: any) => {
+        data.forEach((coin) => {
             totalMarketCap += coin.market_cap;
         });
 
@@ -71,7 +71,7 @@ async function fetchTop100MarketCap(): Promise<number> {
  * @param totalSupply Current total supply of the COIN100 token.
  * @returns Current index market capitalization.
  */
-function calculateIndexMarketCap(totalSupply: ethers.BigNumber): number {
+function calculateIndexMarketCap(totalSupply) {
     const supplyInEther = parseFloat(ethers.utils.formatEther(totalSupply));
     const indexMarketCap = supplyInEther * INITIAL_TOKEN_PRICE;
     console.log(`Current Index Market Cap: $${indexMarketCap.toLocaleString()}`);
@@ -84,7 +84,7 @@ function calculateIndexMarketCap(totalSupply: ethers.BigNumber): number {
  * @param currentIndexCap Current index market cap.
  * @returns Adjustment Ratio.
  */
-function calculateAdjustmentRatio(fetchedMarketCap: number, currentIndexCap: number): number {
+function calculateAdjustmentRatio(fetchedMarketCap, currentIndexCap) {
     const ratio = fetchedMarketCap / currentIndexCap;
     console.log(`Adjustment Ratio: ${ratio}`);
     return ratio;
@@ -96,7 +96,7 @@ function calculateAdjustmentRatio(fetchedMarketCap: number, currentIndexCap: num
  * @param totalSupply Current total supply of the COIN100 token.
  * @returns Object containing mint and burn amounts.
  */
-function determineAdjustment(ratio: number, totalSupply: ethers.BigNumber): { mint: ethers.BigNumber; burn: ethers.BigNumber } {
+function determineAdjustment(ratio, totalSupply) {
     let mintAmount = ethers.BigNumber.from(0);
     let burnAmount = ethers.BigNumber.from(0);
 
@@ -126,17 +126,17 @@ function determineAdjustment(ratio: number, totalSupply: ethers.BigNumber): { mi
  * @param mintAmount Amount of tokens to mint.
  * @param burnAmount Amount of tokens to burn.
  */
-async function executeAdjustment(mintAmount: ethers.BigNumber, burnAmount: ethers.BigNumber) {
+async function executeAdjustment(mintAmount, burnAmount) {
     try {
         if (mintAmount.gt(0)) {
-            const tx = await contract.mint(process.env.DEVELOPER_WALLET as string, mintAmount);
+            const tx = await contract.mint(process.env.DEVELOPER_WALLET, mintAmount);
             console.log(`Minting ${ethers.utils.formatEther(mintAmount)} C100... Transaction Hash: ${tx.hash}`);
             await tx.wait();
             console.log("Minting completed.");
         }
 
         if (burnAmount.gt(0)) {
-            const tx = await contract.burn(process.env.DEVELOPER_WALLET as string, burnAmount);
+            const tx = await contract.burn(process.env.DEVELOPER_WALLET, burnAmount);
             console.log(`Burning ${ethers.utils.formatEther(burnAmount)} C100... Transaction Hash: ${tx.hash}`);
             await tx.wait();
             console.log("Burning completed.");
