@@ -32,6 +32,7 @@ in my project i have this in json
     "solc": "^0.8.28"
   },
   "dependencies": {
+    "@chainlink/contracts": "^1.3.0",
     "@openzeppelin/contracts": "^4.9.2",
     "dotenv": "^16.4.5"
   }
@@ -72,5 +73,21 @@ provide full logic and rebalncing and dynamic proice tracking code production re
 Implement logic to adjust COIN100 price based on fetched data
 also there is no more mumbai test net ... its amoy 
 
-remember it's 2024 so make sure you find the latest libs versions ... make sure all the libs you import exist 
-so search some data first
+remember it's 2024 so make sure you find the latest libs versions ... 
+
+so like in chainlink interface: we only have the following 
+"""
+AccessControllerInterface.sol
+AggregatorInterface.sol
+AggregatorV2V3Interface.sol
+AggregatorV3Interface.sol
+AggregatorValidatorInterface.sol
+IAccessController.sol
+IERC677Receiver.sol
+IOwnable.sol
+ITypeAndVersion.sol
+IWERC20.sol
+LinkTokenInterface.sol
+""
+
+
