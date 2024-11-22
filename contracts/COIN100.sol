@@ -32,7 +32,11 @@ contract COIN100 is ERC20, Ownable, ChainlinkClient {
         liquidityAddress = _liquidity;
 
         // Chainlink setup
+        // Polygon mainnet link token: 0x514910771AF9Ca656af840dff83E8264EcF986CA
+        // Amoy Testnet LINK Token: 0x326C977E6efc84E512bB9C30f76E30c160eD06FB
         setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB); // Polygon LINK Token
+
+        // testnet oracle address: 
         setChainlinkOracle(0xOracleAddress); // Replace with actual Oracle Address
         jobId = "your-job-id"; // Replace with actual Job ID
         fee = 0.1 * 10 ** 18; // 0.1 LINK
