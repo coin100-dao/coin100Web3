@@ -77,18 +77,8 @@ dopnt write example or to do code for dynamic tracking and rebalancing .. just w
 remember it's 2024 so make sure you find the latest libs versions ... 
 
 so like in chainlink interface: we only have the following 
-"""
-AccessControllerInterface.sol
-AggregatorInterface.sol
-AggregatorV2V3Interface.sol
-AggregatorV3Interface.sol
-AggregatorValidatorInterface.sol
-IAccessController.sol
-IERC677Receiver.sol
-IOwnable.sol
-ITypeAndVersion.sol
-IWERC20.sol
-LinkTokenInterface.sol
-""
+coin100-604394:~/coin100{master}$ ls node_modules/@chainlink/contracts/src/v0.8/interfaces
+ChainlinkRequestInterface.sol  FeedRegistryInterface.sol  OperatorInterface.sol  PointerInterface.sol  TypeAndVersionInterface.sol
+ENSInterface.sol               FlagsInterface.sol         OracleInterface.sol    PoRAddressList.sol
 
 remember  ... it's Amoy test net, mumbai doesnt exist any more 
