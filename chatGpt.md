@@ -69,4 +69,5 @@ dont use '//your-api-endpoin' just use live coingecko example
 
 provide the full logic for burrning and minting to track coins and change index value  
 provide full logic and rebalncing and dynamic proice tracking code production ready
+Implement logic to adjust COIN100 price based on fetched data
 also there is no more mumbai test net ... its amoy 
