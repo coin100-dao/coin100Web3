@@ -68,4 +68,5 @@ whats the easiest way to dynamically adjust the price based on 100 top coins in 
 dont use '//your-api-endpoin' just use live coingecko example 
 
 provide the full logic for burrning and minting to track coins and change index value  
+provide full logic and rebalncing and dynamic proice tracking code production ready
 also there is no more mumbai test net ... its amoy 
