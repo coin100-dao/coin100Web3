@@ -1,116 +1,129 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.20;
 
+// Import OpenZeppelin Contracts
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/FeedRegistryInterface.sol";
-import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
-contract COIN100 is ERC20, Ownable, ChainlinkClient {
-    using Chainlink for Chainlink.Request;
+/**
+ * @title COIN100
+ * @dev A decentralized cryptocurrency index fund representing the top 100 cryptocurrencies by market capitalization.
+ */
+contract COIN100 is ERC20, Ownable, Pausable {
+    // Addresses for fee collection
+    address public developerWallet;
+    address public liquidityWallet;
 
-    uint256 public constant INITIAL_SUPPLY = 1_000_000_000 * 10 ** 18;
-    uint256 public developerFee = 3; // 0.3%
-    uint256 public liquidityFee = 3;  // 0.3%
-    address public developerAddress;
-    address public liquidityAddress;
+    // Transaction fee percentages (in basis points)
+    uint256 public developerFee = 30; // 0.3%
+    uint256 public liquidityFee = 30; // 0.3%
 
-    // Chainlink variables
-    bytes32 private jobId;
-    uint256 private fee;
-    int256 public currentPrice;
+    // Total supply constants
+    uint256 public constant INITIAL_SUPPLY = 1_000_000_000 * 10**18; // 1 Billion tokens
+    uint256 public constant DEVELOPER_ALLOCATION = (INITIAL_SUPPLY * 5) / 100; // 5%
+    uint256 public constant LIQUIDITY_ALLOCATION = (INITIAL_SUPPLY * 5) / 100; // 5%
+    uint256 public constant PUBLIC_SALE_ALLOCATION = INITIAL_SUPPLY - DEVELOPER_ALLOCATION - LIQUIDITY_ALLOCATION; // 90%
 
-    event PriceUpdated(int256 newPrice);
-    event PriceAdjusted(uint256 newSupply);
+    // Events
+    event FeesUpdated(uint256 developerFee, uint256 liquidityFee);
+    event WalletsUpdated(address developerWallet, address liquidityWallet);
+    event TokensMinted(address to, uint256 amount);
+    event TokensBurned(address from, uint256 amount);
 
-    constructor(address _developer, address _liquidity) ERC20("COIN100", "C100") {
-        _mint(msg.sender, (INITIAL_SUPPLY * 90) / 100); // Public Sale
-        _mint(_developer, (INITIAL_SUPPLY * 5) / 100); // Developer
-        _mint(_liquidity, (INITIAL_SUPPLY * 5) / 100); // Liquidity
+    /**
+     * @dev Constructor that mints the initial allocations.
+     * @param _developerWallet Address of the developer wallet.
+     * @param _liquidityWallet Address of the liquidity wallet.
+     */
+    constructor(address _developerWallet, address _liquidityWallet) ERC20("COIN100", "C100") {
+        require(_developerWallet != address(0), "Invalid developer wallet address");
+        require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
 
-        developerAddress = _developer;
-        liquidityAddress = _liquidity;
+        developerWallet = _developerWallet;
+        liquidityWallet = _liquidityWallet;
 
-        // Chainlink setup
-        // Polygon mainnet link token: 0x514910771AF9Ca656af840dff83E8264EcF986CA
-        // Amoy Testnet LINK Token: 0x326C977E6efc84E512bB9C30f76E30c160eD06FB
-        setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB); // Polygon LINK Token
-
-        // testnet oracle address: 
-        setChainlinkOracle(0xOracleAddress); // Replace with actual Oracle Address
-        jobId = "your-job-id"; // Replace with actual Job ID
-        fee = 0.1 * 10 ** 18; // 0.1 LINK
+        // Mint initial allocations
+        _mint(_developerWallet, DEVELOPER_ALLOCATION);
+        _mint(_liquidityWallet, LIQUIDITY_ALLOCATION);
+        _mint(msg.sender, PUBLIC_SALE_ALLOCATION);
     }
 
-    // Override transfer to include fees
-    function _transfer(address sender, address recipient, uint256 amount) internal override {
-        uint256 devFeeAmount = (amount * developerFee) / 1000;
-        uint256 liqFeeAmount = (amount * liquidityFee) / 1000;
-        uint256 transferAmount = amount - devFeeAmount - liqFeeAmount;
+    /**
+     * @dev Overrides the ERC20 _transfer function to include fee logic.
+     * @param sender Address sending the tokens.
+     * @param recipient Address receiving the tokens.
+     * @param amount Amount of tokens being transferred.
+     */
+    function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
+        uint256 totalFee = developerFee + liquidityFee;
+        uint256 feeAmount = (amount * totalFee) / 10_000; // Basis points calculation
+        uint256 amountAfterFee = amount - feeAmount;
 
-        super._transfer(sender, developerAddress, devFeeAmount);
-        super._transfer(sender, liquidityAddress, liqFeeAmount);
-        super._transfer(sender, recipient, transferAmount);
+        // Transfer fees
+        super._transfer(sender, developerWallet, (amount * developerFee) / 10_000);
+        super._transfer(sender, liquidityWallet, (amount * liquidityFee) / 10_000);
+
+        // Transfer the remaining amount to the recipient
+        super._transfer(sender, recipient, amountAfterFee);
     }
 
-    // Mint function restricted to owner
+    /**
+     * @dev Allows the owner to update transaction fees.
+     * @param _developerFee New developer fee in basis points.
+     * @param _liquidityFee New liquidity fee in basis points.
+     */
+    function updateFees(uint256 _developerFee, uint256 _liquidityFee) external onlyOwner {
+        require(_developerFee + _liquidityFee <= 1000, "Total fees cannot exceed 10%");
+        developerFee = _developerFee;
+        liquidityFee = _liquidityFee;
+        emit FeesUpdated(_developerFee, _liquidityFee);
+    }
+
+    /**
+     * @dev Allows the owner to update wallet addresses for fee collection.
+     * @param _developerWallet New developer wallet address.
+     * @param _liquidityWallet New liquidity wallet address.
+     */
+    function updateWallets(address _developerWallet, address _liquidityWallet) external onlyOwner {
+        require(_developerWallet != address(0), "Invalid developer wallet address");
+        require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
+        developerWallet = _developerWallet;
+        liquidityWallet = _liquidityWallet;
+        emit WalletsUpdated(_developerWallet, _liquidityWallet);
+    }
+
+    /**
+     * @dev Allows the owner to mint new tokens.
+     * @param to Address to receive the minted tokens.
+     * @param amount Amount of tokens to mint.
+     */
     function mint(address to, uint256 amount) external onlyOwner {
         _mint(to, amount);
+        emit TokensMinted(to, amount);
     }
 
-    // Burn function restricted to owner
-    function burn(uint256 amount) external onlyOwner {
-        _burn(msg.sender, amount);
+    /**
+     * @dev Allows the owner to burn tokens from a specific address.
+     * @param from Address from which tokens will be burned.
+     * @param amount Amount of tokens to burn.
+     */
+    function burn(address from, uint256 amount) external onlyOwner {
+        _burn(from, amount);
+        emit TokensBurned(from, amount);
     }
 
-    // Function to request price update
-    function requestPriceUpdate() public onlyOwner {
-        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
-        // Example API endpoint: Fetch top 100 market caps from Coingecko
-        request.add("get", "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false");
-        request.add("path", "0.current_price"); // Adjust path based on actual response structure
-        sendChainlinkRequest(request, fee);
+    /**
+     * @dev Allows the owner to pause all token transfers.
+     */
+    function pause() external onlyOwner {
+        _pause();
     }
 
-    // Callback function for Chainlink
-    function fulfill(bytes32 _requestId, int256 _price) public recordChainlinkFulfillment(_requestId) {
-        currentPrice = _price;
-        emit PriceUpdated(_price);
+    /**
+     * @dev Allows the owner to unpause all token transfers.
+     */
+    function unpause() external onlyOwner {
+        _unpause();
     }
-
-    // Function to adjust price logic
-    function adjustPrice() external onlyOwner {
-        require(currentPrice > 0, "Price not set");
-
-        // Example: Implement a rebasing mechanism based on currentPrice
-        uint256 newSupply = (INITIAL_SUPPLY * uint256(currentPrice)) / 1e18;
-        if (newSupply > totalSupply()) {
-            uint256 mintAmount = newSupply - totalSupply();
-            _mint(owner(), mintAmount);
-        } else if (newSupply < totalSupply()) {
-            uint256 burnAmount = totalSupply() - newSupply;
-            _burn(owner(), burnAmount);
-        }
-
-        emit PriceAdjusted(newSupply);
-    }
-
-    // Override ownership transfer to secure contract
-    function transferOwnership(address newOwner) public override onlyOwner {
-        require(newOwner != address(0), "New owner is zero address");
-        super.transferOwnership(newOwner);
-    }
-
-    // Emergency withdrawal functions
-    function withdrawTokens(address token, uint256 amount) external onlyOwner {
-        IERC20(token).transfer(owner(), amount);
-    }
-
-    function withdrawMatic(uint256 amount) external onlyOwner {
-        payable(owner()).transfer(amount);
-    }
-
-    // Fallback functions
-    receive() external payable {}
-    fallback() external payable {}
 }

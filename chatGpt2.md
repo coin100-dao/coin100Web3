@@ -73,6 +73,8 @@ remember it's 2024 so make sure you find the latest libs versions ...
 
 you'll give me steps to testing locally 
 developer can mint more and can burn based on need ... developer can do anything with the contract ... think of all the function that controls future values and minting and all and add them 
+give me the full logic for Dynamic Price Adjustment Algorithm, Burning and Minting Logic and Rebalancing the Index
+ full algorithm code 
 how could that be done ???
 give me a full plan 
 
