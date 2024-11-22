@@ -71,3 +71,6 @@ provide the full logic for burrning and minting to track coins and change index 
 provide full logic and rebalncing and dynamic proice tracking code production ready
 Implement logic to adjust COIN100 price based on fetched data
 also there is no more mumbai test net ... its amoy 
+
+remember it's 2024 so make sure you find the latest libs versions ... make sure all the libs you import exist 
+so search some data first
