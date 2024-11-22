@@ -3,74 +3,110 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/FeedRegistryInterface.sol";
+import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 
-contract COIN100 is ERC20, Ownable {
-    AggregatorV3Interface private priceFeed;
-    address public developerWallet;
-    address public liquidityWallet;
-    uint256 public constant INITIAL_SUPPLY = 1_000_000_000 * 10 ** 18; // 1 billion tokens
-    uint256 public constant INITIAL_PRICE = 0.01 ether; // $0.01 in ETH
+contract COIN100 is ERC20, Ownable, ChainlinkClient {
+    using Chainlink for Chainlink.Request;
 
-    // Fees
-    uint256 public constant TRANSACTION_FEE = 30; // 0.3% in basis points (10000 = 100%)
-    uint256 private constant BP_DIVISOR = 10000; // Basis points divisor
+    uint256 public constant INITIAL_SUPPLY = 1_000_000_000 * 10 ** 18;
+    uint256 public developerFee = 3; // 0.3%
+    uint256 public liquidityFee = 3;  // 0.3%
+    address public developerAddress;
+    address public liquidityAddress;
 
-    event PriceUpdated(uint256 newPrice);
+    // Chainlink variables
+    bytes32 private jobId;
+    uint256 private fee;
+    int256 public currentPrice;
 
-    constructor(
-        address _priceFeed,
-        address _developerWallet,
-        address _liquidityWallet
-    ) ERC20("COIN100", "C100") {
-        require(_developerWallet != address(0), "Developer wallet cannot be zero");
-        require(_liquidityWallet != address(0), "Liquidity wallet cannot be zero");
-        require(_priceFeed != address(0), "Price feed cannot be zero");
+    event PriceUpdated(int256 newPrice);
+    event PriceAdjusted(uint256 newSupply);
 
-        developerWallet = _developerWallet;
-        liquidityWallet = _liquidityWallet;
-        priceFeed = AggregatorV3Interface(_priceFeed);
+    constructor(address _developer, address _liquidity) ERC20("COIN100", "C100") {
+        _mint(msg.sender, (INITIAL_SUPPLY * 90) / 100); // Public Sale
+        _mint(_developer, (INITIAL_SUPPLY * 5) / 100); // Developer
+        _mint(_liquidity, (INITIAL_SUPPLY * 5) / 100); // Liquidity
 
-        // Initial distribution
-        _mint(developerWallet, (INITIAL_SUPPLY * 5) / 100); // 5%
-        _mint(liquidityWallet, (INITIAL_SUPPLY * 5) / 100); // 5%
-        _mint(msg.sender, (INITIAL_SUPPLY * 90) / 100); // 90% for public sale
+        developerAddress = _developer;
+        liquidityAddress = _liquidity;
+
+        // Chainlink setup
+        setChainlinkToken(0x326C977E6efc84E512bB9C30f76E30c160eD06FB); // Polygon LINK Token
+        setChainlinkOracle(0xOracleAddress); // Replace with actual Oracle Address
+        jobId = "your-job-id"; // Replace with actual Job ID
+        fee = 0.1 * 10 ** 18; // 0.1 LINK
     }
 
-    function _transfer(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) internal override {
-        uint256 fee = (amount * TRANSACTION_FEE) / BP_DIVISOR;
-        uint256 amountAfterFee = amount - fee;
+    // Override transfer to include fees
+    function _transfer(address sender, address recipient, uint256 amount) internal override {
+        uint256 devFeeAmount = (amount * developerFee) / 1000;
+        uint256 liqFeeAmount = (amount * liquidityFee) / 1000;
+        uint256 transferAmount = amount - devFeeAmount - liqFeeAmount;
 
-        super._transfer(sender, developerWallet, fee / 2); // 50% of fee to developer
-        super._transfer(sender, liquidityWallet, fee / 2); // 50% of fee to liquidity
-        super._transfer(sender, recipient, amountAfterFee);
+        super._transfer(sender, developerAddress, devFeeAmount);
+        super._transfer(sender, liquidityAddress, liqFeeAmount);
+        super._transfer(sender, recipient, transferAmount);
     }
 
-    function updatePrice() external onlyOwner {
-        (, int256 marketCap, , , ) = priceFeed.latestRoundData();
-        require(marketCap > 0, "Invalid market cap");
-
-        uint256 newPrice = uint256(marketCap) / totalSupply();
-        emit PriceUpdated(newPrice);
+    // Mint function restricted to owner
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
     }
 
-    function mint(uint256 amount) external onlyOwner {
-        _mint(msg.sender, amount);
-    }
-
+    // Burn function restricted to owner
     function burn(uint256 amount) external onlyOwner {
         _burn(msg.sender, amount);
     }
 
-    // Fetch latest market cap data
-    function getMarketCap() public view returns (uint256) {
-        (, int256 marketCap, , , ) = priceFeed.latestRoundData();
-        require(marketCap > 0, "Market cap data unavailable");
-        return uint256(marketCap);
+    // Function to request price update
+    function requestPriceUpdate() public onlyOwner {
+        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
+        // Example API endpoint: Fetch top 100 market caps from Coingecko
+        request.add("get", "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false");
+        request.add("path", "0.current_price"); // Adjust path based on actual response structure
+        sendChainlinkRequest(request, fee);
     }
 
+    // Callback function for Chainlink
+    function fulfill(bytes32 _requestId, int256 _price) public recordChainlinkFulfillment(_requestId) {
+        currentPrice = _price;
+        emit PriceUpdated(_price);
+    }
+
+    // Function to adjust price logic
+    function adjustPrice() external onlyOwner {
+        require(currentPrice > 0, "Price not set");
+
+        // Example: Implement a rebasing mechanism based on currentPrice
+        uint256 newSupply = (INITIAL_SUPPLY * uint256(currentPrice)) / 1e18;
+        if (newSupply > totalSupply()) {
+            uint256 mintAmount = newSupply - totalSupply();
+            _mint(owner(), mintAmount);
+        } else if (newSupply < totalSupply()) {
+            uint256 burnAmount = totalSupply() - newSupply;
+            _burn(owner(), burnAmount);
+        }
+
+        emit PriceAdjusted(newSupply);
+    }
+
+    // Override ownership transfer to secure contract
+    function transferOwnership(address newOwner) public override onlyOwner {
+        require(newOwner != address(0), "New owner is zero address");
+        super.transferOwnership(newOwner);
+    }
+
+    // Emergency withdrawal functions
+    function withdrawTokens(address token, uint256 amount) external onlyOwner {
+        IERC20(token).transfer(owner(), amount);
+    }
+
+    function withdrawMatic(uint256 amount) external onlyOwner {
+        payable(owner()).transfer(amount);
+    }
+
+    // Fallback functions
+    receive() external payable {}
+    fallback() external payable {}
 }

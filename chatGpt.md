@@ -81,4 +81,9 @@ coin100-604394:~/coin100{master}$ ls node_modules/@chainlink/contracts/src/v0.8/
 ChainlinkRequestInterface.sol  FeedRegistryInterface.sol  OperatorInterface.sol  PointerInterface.sol  TypeAndVersionInterface.sol
 ENSInterface.sol               FlagsInterface.sol         OracleInterface.sol    PoRAddressList.sol
 
+dont forget while giving me guidence, to first guide me with creating and using
+- Polygon Link Token address
+- oracle address
+- job id 
+
 remember  ... it's Amoy test net, mumbai doesnt exist any more 
