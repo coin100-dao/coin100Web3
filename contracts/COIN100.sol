@@ -223,6 +223,12 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source);
 
+        // // Set any secrets if required (empty in this case)
+        // req.setSecrets("");
+
+        // // Set any arguments if required (empty in this case)
+        // req.setArgs("");
+
         // Encode the request
         bytes memory encodedRequest = req.encodeCBOR();
 
