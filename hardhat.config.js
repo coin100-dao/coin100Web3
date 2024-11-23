@@ -27,5 +27,9 @@ module.exports = {
       accounts: [`0x${process.env.DEVELOPER_WALLET_PRIVATE_KEY}`],
       chainId: 137, // Polygon Mainnet Chain ID
     },
+    localhost: {
+      url: "http://127.0.0.1:8545/",
+      accounts: { mnemonic: "test test test test test test test test test test test junk" },
+    },
   },
 };
