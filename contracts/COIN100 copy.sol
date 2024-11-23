@@ -6,26 +6,11 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-// Chainlink Contracts
-import "@chainlink/contracts/src/v0.8/interfaces/ChainlinkRequestInterface.sol";
-import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
-
 /**
  * @title COIN100
  * @dev A decentralized cryptocurrency index fund representing the top 100 cryptocurrencies by market capitalization.
  */
 contract COIN100 is ERC20, Ownable, Pausable {
-    using Chainlink for Chainlink.Request;
-
-    // Chainlink variables
-    address private oracle;
-    bytes32 private jobId;
-    uint256 private fee;
-
-    // Market cap data
-    uint256 public latestMarketCap;
-    uint256 public baseMarketCap = 10_000_000; // Initial market cap in USD
-
     // Addresses for fee collection
     address public developerWallet;
     address public liquidityWallet;
@@ -47,7 +32,6 @@ contract COIN100 is ERC20, Ownable, Pausable {
     event TokensMinted(address to, uint256 amount);
     event TokensBurned(address from, uint256 amount);
     event PriceAdjusted(uint256 newTotalSupply);
-    event RequestMarketCap(bytes32 indexed requestId, uint256 marketCap);
 
     /**
      * @dev Constructor that mints the initial allocations.
@@ -65,12 +49,6 @@ contract COIN100 is ERC20, Ownable, Pausable {
         _mint(_developerWallet, DEVELOPER_ALLOCATION);
         _mint(_liquidityWallet, LIQUIDITY_ALLOCATION);
         _mint(msg.sender, PUBLIC_SALE_ALLOCATION);
-
-        // Chainlink setup
-        setPublicChainlinkToken();
-        oracle = "0xYourOracleAddress"; // Replace with the oracle address
-        jobId = "your_job_id"; // Replace with the job ID
-        fee = (1 * LINK_DIVISIBILITY) / 10; // 0.1 LINK (adjust as needed)
     }
 
     /**
@@ -99,40 +77,6 @@ contract COIN100 is ERC20, Ownable, Pausable {
             // Transfer the remaining amount to the recipient
             super._transfer(sender, recipient, amountAfterFee);
         }
-    }
-
-    /**
-    * @dev Initiates a request to fetch the latest market cap data.
-    */
-    function requestMarketCapData() public onlyOwner returns (bytes32 requestId) {
-        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfillMarketCap.selector);
-
-        // Set the URL to perform the GET request
-        request.add("get", "https://api.coingecko.com/api/v3/global");
-
-        // Set the path to find the desired data in the API response
-        request.add("path", "data.total_market_cap.usd");
-
-        // Multiply the result to remove decimals (if necessary)
-        int256 timesAmount = 1;
-        request.addInt("times", timesAmount);
-
-        // Sends the request
-        return sendChainlinkRequestTo(oracle, request, fee);
-    }
-
-    /**
-    * @dev Callback function used by the Chainlink oracle to return the data.
-    * @param _requestId The request ID.
-    * @param _marketCap The market cap value returned by the oracle.
-    */
-    function fulfillMarketCap(bytes32 _requestId, uint256 _marketCap) public recordChainlinkFulfillment(_requestId) {
-        latestMarketCap = _marketCap;
-        emit RequestMarketCap(_requestId, _marketCap);
-
-        // Call adjustPrice with the new market cap data
-        uint256 desiredTotalSupply = (latestMarketCap * INITIAL_SUPPLY) / baseMarketCap;
-        adjustPrice(desiredTotalSupply);
     }
 
     /**
