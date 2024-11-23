@@ -1,31 +1,22 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 // Import OpenZeppelin Contracts
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-// Chainlink Contracts
-import "@chainlink/contracts/src/v0.8/interfaces/ChainlinkRequestInterface.sol";
-import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+// Import Chainlink Functions Contracts
+import { FunctionsClient } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
+import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
+
 
 /**
  * @title COIN100
  * @dev A decentralized cryptocurrency index fund representing the top 100 cryptocurrencies by market capitalization.
  */
-contract COIN100 is ERC20, Ownable, Pausable {
-    using Chainlink for Chainlink.Request;
-
-    // Chainlink variables
-    address private oracle;
-    bytes32 private jobId;
-    uint256 private fee;
-
-    // Market cap data
-    uint256 public latestMarketCap;
-    uint256 public baseMarketCap = 10_000_000; // Initial market cap in USD
-
+contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
+    using FunctionsRequest for FunctionsRequest.Request;
     // Addresses for fee collection
     address public developerWallet;
     address public liquidityWallet;
@@ -41,36 +32,51 @@ contract COIN100 is ERC20, Ownable, Pausable {
     uint256 public constant LIQUIDITY_ALLOCATION = (INITIAL_SUPPLY * 5) / 100; // 5%
     uint256 public constant PUBLIC_SALE_ALLOCATION = INITIAL_SUPPLY - DEVELOPER_ALLOCATION - LIQUIDITY_ALLOCATION; // 90%
 
+    // Chainlink Functions Configuration
+    address public constant FUNCTIONS_ROUTER_ADDRESS = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De; // Chainlink Functions Router Address on Polygon
+    bytes32 public constant DON_ID = 0x66756e2d706f6c79676f6e2d616d6f792d310000000000000000000000000000; // DON ID: fun-polygon-amoy-1
+
+    // Subscription ID for Chainlink Functions
+    uint64 public subscriptionId;
+
     // Events
     event FeesUpdated(uint256 developerFee, uint256 liquidityFee);
     event WalletsUpdated(address developerWallet, address liquidityWallet);
     event TokensMinted(address to, uint256 amount);
     event TokensBurned(address from, uint256 amount);
     event PriceAdjusted(uint256 newTotalSupply);
-    event RequestMarketCap(bytes32 indexed requestId, uint256 marketCap);
+    event FunctionsRequestSent(bytes32 indexed requestId);
+    event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newTotalSupply);
+    event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
+
+    // Stored total market cap
+    uint256 public totalMarketCap;
 
     /**
-     * @dev Constructor that mints the initial allocations.
+     * @dev Constructor that mints the initial allocations and sets up Chainlink Functions.
      * @param _developerWallet Address of the developer wallet.
      * @param _liquidityWallet Address of the liquidity wallet.
+     * @param _subscriptionId Chainlink subscription ID.
      */
-    constructor(address _developerWallet, address _liquidityWallet) ERC20("COIN100", "C100") {
+    constructor(
+        address _developerWallet,
+        address _liquidityWallet,
+        uint64 _subscriptionId
+    )
+        ERC20("COIN100", "C100")
+        FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
+    {
         require(_developerWallet != address(0), "Invalid developer wallet address");
         require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
 
         developerWallet = _developerWallet;
         liquidityWallet = _liquidityWallet;
+        subscriptionId = _subscriptionId;
 
         // Mint initial allocations
         _mint(_developerWallet, DEVELOPER_ALLOCATION);
         _mint(_liquidityWallet, LIQUIDITY_ALLOCATION);
         _mint(msg.sender, PUBLIC_SALE_ALLOCATION);
-
-        // Chainlink setup
-        setPublicChainlinkToken();
-        oracle = "0xYourOracleAddress"; // Replace with the oracle address
-        jobId = "your_job_id"; // Replace with the job ID
-        fee = (1 * LINK_DIVISIBILITY) / 10; // 0.1 LINK (adjust as needed)
     }
 
     /**
@@ -99,40 +105,6 @@ contract COIN100 is ERC20, Ownable, Pausable {
             // Transfer the remaining amount to the recipient
             super._transfer(sender, recipient, amountAfterFee);
         }
-    }
-
-    /**
-    * @dev Initiates a request to fetch the latest market cap data.
-    */
-    function requestMarketCapData() public onlyOwner returns (bytes32 requestId) {
-        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfillMarketCap.selector);
-
-        // Set the URL to perform the GET request
-        request.add("get", "https://api.coingecko.com/api/v3/global");
-
-        // Set the path to find the desired data in the API response
-        request.add("path", "data.total_market_cap.usd");
-
-        // Multiply the result to remove decimals (if necessary)
-        int256 timesAmount = 1;
-        request.addInt("times", timesAmount);
-
-        // Sends the request
-        return sendChainlinkRequestTo(oracle, request, fee);
-    }
-
-    /**
-    * @dev Callback function used by the Chainlink oracle to return the data.
-    * @param _requestId The request ID.
-    * @param _marketCap The market cap value returned by the oracle.
-    */
-    function fulfillMarketCap(bytes32 _requestId, uint256 _marketCap) public recordChainlinkFulfillment(_requestId) {
-        latestMarketCap = _marketCap;
-        emit RequestMarketCap(_requestId, _marketCap);
-
-        // Call adjustPrice with the new market cap data
-        uint256 desiredTotalSupply = (latestMarketCap * INITIAL_SUPPLY) / baseMarketCap;
-        adjustPrice(desiredTotalSupply);
     }
 
     /**
@@ -195,37 +167,122 @@ contract COIN100 is ERC20, Ownable, Pausable {
     }
 
     /**
-     * @dev Adjusts the total supply based on the latest market cap data.
-     * @param newTotalSupply The desired new total supply of COIN100 tokens.
-     *
-     * This function should be called by an off-chain service that fetches the latest
-     * market cap data of the top 100 cryptocurrencies and calculates the required
-     * adjustment to the COIN100 supply to reflect the index accurately.
+     * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
      */
-    function adjustPrice(uint256 newTotalSupply) external onlyOwner {
-        uint256 currentSupply = totalSupply();
-        if (newTotalSupply > currentSupply) {
-            uint256 mintAmount = newTotalSupply - currentSupply;
-            _mint(owner(), mintAmount);
-            emit PriceAdjusted(newTotalSupply);
-        } else if (newTotalSupply < currentSupply) {
-            uint256 burnAmount = currentSupply - newTotalSupply;
-            _burn(owner(), burnAmount);
-            emit PriceAdjusted(newTotalSupply);
-        }
-        // If newTotalSupply == currentSupply, no action is taken
+    function requestMarketCapData() external onlyOwner {
+        // JavaScript code to fetch total market cap
+        string memory source = string(
+            abi.encodePacked(
+                "const axios = require('axios');",
+                "async function run(request) {",
+                "  const response = await axios.get('https://api.coingecko.com/api/v3/global');",
+                "  const totalMarketCap = response.data.data.total_market_cap.usd;",
+                "  return totalMarketCap.toString();",
+                "}"
+            )
+        );
+        // Initialize a new FunctionsRequest
+        FunctionsRequest.Request memory req;
+        req.initializeRequestForInlineJavaScript(source);
+
+        // Set any secrets if required (empty in this case)
+        req.setSecrets("");
+
+        // Set any arguments if required (empty in this case)
+        req.setArgs("");
+
+        // Encode the request
+        bytes memory encodedRequest = req.encodeCBOR();
+
+        // Send the request using the internal _sendRequest method
+        bytes32 requestId = _sendRequest(
+            encodedRequest,
+            subscriptionId,
+            300000, // gas limit
+            DON_ID
+        );
+
+        emit FunctionsRequestSent(requestId);
     }
 
     /**
-     * @dev Calculates the new total supply based on the latest market cap.
-     * @param latestMarketCap The latest total market cap of the top 100 cryptocurrencies.
-     * @return desiredTotalSupply The calculated desired total supply of COIN100 tokens.
-     *
-     * This function can be used off-chain to determine the new supply before calling `adjustPrice`.
-     * For example, desiredTotalSupply = (latestMarketCap / baseMarketCap) * INITIAL_SUPPLY
+     * @dev Callback function for Chainlink Functions to fulfill the request.
+     * @param requestId The request ID.
+     * @param response The response from the Chainlink Function.
+     * @param err The error, if any.
      */
-    function calculateDesiredSupply(uint256 latestMarketCap, uint256 baseMarketCap) external pure returns (uint256 desiredTotalSupply) {
-        require(baseMarketCap > 0, "Base market cap must be greater than zero");
-        desiredTotalSupply = (latestMarketCap * INITIAL_SUPPLY) / baseMarketCap;
+    function fulfillRequest(
+        bytes32 requestId,
+        bytes memory response,
+        bytes memory err
+    ) internal override {
+        if (response.length > 0) {
+            // Parse the response to uint256
+            uint256 fetchedMarketCap = parseInt(string(response));
+            totalMarketCap = fetchedMarketCap;
+
+            // Adjust the token supply based on the fetched market cap
+            adjustSupply(fetchedMarketCap);
+
+            emit FunctionsRequestFulfilled(requestId, fetchedMarketCap);
+        } else {
+            // Handle the error
+            emit FunctionsRequestFailed(requestId, string(err));
+        }
+    }
+
+    /**
+     * @dev Adjusts the token supply based on the latest market cap data.
+     * @param fetchedMarketCap The latest total market cap in USD.
+     *
+     * Logic:
+     * - Calculate the desired total supply based on the fetched market cap.
+     * - Mint or burn tokens to match the desired supply.
+     * - Example: If market cap increases, mint tokens; if it decreases, burn tokens.
+     */
+    function adjustSupply(uint256 fetchedMarketCap) internal {
+        // Example logic: Adjust total supply proportionally to the market cap
+        // Initial market cap assumed at deployment (e.g., $3.38T)
+        uint256 initialMarketCap = 3_380_000_000_000; // $3.38 Trillion
+
+        // Calculate the desired supply based on the ratio
+        uint256 desiredSupply = (INITIAL_SUPPLY * fetchedMarketCap) / initialMarketCap;
+
+        uint256 currentSupply = totalSupply();
+
+        if (desiredSupply > currentSupply) {
+            uint256 mintAmount = desiredSupply - currentSupply;
+            _mint(owner(), mintAmount);
+            emit PriceAdjusted(desiredSupply);
+        } else if (desiredSupply < currentSupply) {
+            uint256 burnAmount = currentSupply - desiredSupply;
+            _burn(owner(), burnAmount);
+            emit PriceAdjusted(desiredSupply);
+        }
+        // If desiredSupply == currentSupply, no action is taken
+    }
+
+    /**
+     * @dev Parses a string to a uint256. Assumes the string is a valid number.
+     * @param _a The string to parse.
+     * @return _parsed The parsed uint256.
+     */
+    function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
+        bytes memory bresult = bytes(_a);
+        uint256 result = 0;
+        for (uint256 i = 0; i < bresult.length; i++) {
+            if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
+                result = result * 10 + (uint8(bresult[i]) - 48);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * @dev Allows the owner to update the Chainlink subscription ID.
+     * @param _subscriptionId The new subscription ID.
+     */
+    function updateSubscriptionId(uint64 _subscriptionId) external onlyOwner {
+        subscriptionId = _subscriptionId;
     }
 }
