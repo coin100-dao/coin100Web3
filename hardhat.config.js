@@ -44,7 +44,7 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545/",
       accounts: [
-        "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Sample Private Key
+        "0x59c6995e998f97a5a0044966f0945389dc9e495a7f59e0f6513a3d4ef0e2c6ae", // Sample Private Key
       ],
     },
   },

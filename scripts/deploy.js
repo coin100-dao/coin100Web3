@@ -12,6 +12,7 @@ async function main() {
 
     await coin100.deployed();
     console.log("COIN100 deployed to:", coin100.address);
+    console.log(coin100);
 }
 
 main()
