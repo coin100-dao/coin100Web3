@@ -18,6 +18,7 @@ contract COIN100 is ERC20, Ownable, Pausable {
     // Transaction fee percentages (in basis points)
     uint256 public developerFee = 30; // 0.3%
     uint256 public liquidityFee = 30; // 0.3%
+    uint256 public constant FEE_DIVISOR = 10_000;
 
     // Total supply constants
     uint256 public constant INITIAL_SUPPLY = 1_000_000_000 * 10**18; // 1 Billion tokens
@@ -30,6 +31,7 @@ contract COIN100 is ERC20, Ownable, Pausable {
     event WalletsUpdated(address developerWallet, address liquidityWallet);
     event TokensMinted(address to, uint256 amount);
     event TokensBurned(address from, uint256 amount);
+    event PriceAdjusted(uint256 newTotalSupply);
 
     /**
      * @dev Constructor that mints the initial allocations.
@@ -56,16 +58,25 @@ contract COIN100 is ERC20, Ownable, Pausable {
      * @param amount Amount of tokens being transferred.
      */
     function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
-        uint256 totalFee = developerFee + liquidityFee;
-        uint256 feeAmount = (amount * totalFee) / 10_000; // Basis points calculation
-        uint256 amountAfterFee = amount - feeAmount;
+        // If sender or recipient is the owner, transfer without fees
+        if (sender == owner() || recipient == owner()) {
+            super._transfer(sender, recipient, amount);
+        } else {
+            uint256 totalFee = developerFee + liquidityFee;
+            uint256 feeAmount = (amount * totalFee) / FEE_DIVISOR; // Calculate total fee
+            uint256 amountAfterFee = amount - feeAmount;
 
-        // Transfer fees
-        super._transfer(sender, developerWallet, (amount * developerFee) / 10_000);
-        super._transfer(sender, liquidityWallet, (amount * liquidityFee) / 10_000);
+            // Calculate individual fees
+            uint256 devFeeAmount = (amount * developerFee) / FEE_DIVISOR;
+            uint256 liqFeeAmount = feeAmount - devFeeAmount; // Remaining fee goes to liquidity
 
-        // Transfer the remaining amount to the recipient
-        super._transfer(sender, recipient, amountAfterFee);
+            // Transfer fees to respective wallets
+            super._transfer(sender, developerWallet, devFeeAmount);
+            super._transfer(sender, liquidityWallet, liqFeeAmount);
+
+            // Transfer the remaining amount to the recipient
+            super._transfer(sender, recipient, amountAfterFee);
+        }
     }
 
     /**
@@ -125,5 +136,40 @@ contract COIN100 is ERC20, Ownable, Pausable {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @dev Adjusts the total supply based on the latest market cap data.
+     * @param newTotalSupply The desired new total supply of COIN100 tokens.
+     *
+     * This function should be called by an off-chain service that fetches the latest
+     * market cap data of the top 100 cryptocurrencies and calculates the required
+     * adjustment to the COIN100 supply to reflect the index accurately.
+     */
+    function adjustPrice(uint256 newTotalSupply) external onlyOwner {
+        uint256 currentSupply = totalSupply();
+        if (newTotalSupply > currentSupply) {
+            uint256 mintAmount = newTotalSupply - currentSupply;
+            _mint(owner(), mintAmount);
+            emit PriceAdjusted(newTotalSupply);
+        } else if (newTotalSupply < currentSupply) {
+            uint256 burnAmount = currentSupply - newTotalSupply;
+            _burn(owner(), burnAmount);
+            emit PriceAdjusted(newTotalSupply);
+        }
+        // If newTotalSupply == currentSupply, no action is taken
+    }
+
+    /**
+     * @dev Calculates the new total supply based on the latest market cap.
+     * @param latestMarketCap The latest total market cap of the top 100 cryptocurrencies.
+     * @return desiredTotalSupply The calculated desired total supply of COIN100 tokens.
+     *
+     * This function can be used off-chain to determine the new supply before calling `adjustPrice`.
+     * For example, desiredTotalSupply = (latestMarketCap / baseMarketCap) * INITIAL_SUPPLY
+     */
+    function calculateDesiredSupply(uint256 latestMarketCap, uint256 baseMarketCap) external pure returns (uint256 desiredTotalSupply) {
+        require(baseMarketCap > 0, "Base market cap must be greater than zero");
+        desiredTotalSupply = (latestMarketCap * INITIAL_SUPPLY) / baseMarketCap;
     }
 }
