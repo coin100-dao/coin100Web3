@@ -19,12 +19,12 @@ module.exports = {
   networks: {
     amoy: {
       url: process.env.AMOY_RPC_URL,
-      accounts: [`0x${process.env.PRIVATE_KEY}`],
+      accounts: [`0x${process.env.DEVELOPER_WALLET_PRIVATE_KEY}`],
       chainId: 80002,
     },
     polygon: {
       url: process.env.POLYGON_RPC_URL,
-      accounts: [`0x${process.env.PRIVATE_KEY}`],
+      accounts: [`0x${process.env.DEVELOPER_WALLET_PRIVATE_KEY}`],
       chainId: 137, // Polygon Mainnet Chain ID
     },
   },
