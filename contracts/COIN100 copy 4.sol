@@ -1,29 +1,32 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-// Import OpenZeppelin Contracts
+// OpenZeppelin Imports
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-// Import Chainlink Functions Contracts
+// Chainlink Imports
 import { FunctionsClient } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 
+// Chainlink Keepers Interface
+import "@chainlink/contracts/src/v0.8/interfaces/KeeperCompatibleInterface.sol";
 
 /**
  * @title COIN100
  * @dev A decentralized cryptocurrency index fund representing the top 100 cryptocurrencies by market capitalization.
  */
-contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
+contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, KeeperCompatibleInterface {
     using FunctionsRequest for FunctionsRequest.Request;
+
     // Addresses for fee collection
     address public developerWallet;
     address public liquidityWallet;
 
     // Transaction fee percentages (in basis points)
-    uint256 public developerFee = 30; // 0.3%
-    uint256 public liquidityFee = 30; // 0.3%
+    uint256 public developerFee = 100; // 1%
+    uint256 public liquidityFee = 100; // 1%
     uint256 public constant FEE_DIVISOR = 10_000;
 
     // Total supply constants
@@ -33,8 +36,8 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
     uint256 public constant PUBLIC_SALE_ALLOCATION = INITIAL_SUPPLY - DEVELOPER_ALLOCATION - LIQUIDITY_ALLOCATION; // 90%
 
     // Chainlink Functions Configuration
-    address public constant FUNCTIONS_ROUTER_ADDRESS = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De; // Chainlink Functions Router Address on Polygon
-    bytes32 public constant DON_ID = 0x66756e2d706f6c79676f6e2d616d6f792d310000000000000000000000000000; // DON ID: fun-polygon-amoy-1
+    address public constant FUNCTIONS_ROUTER_ADDRESS = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De; // Example Address
+    bytes32 public constant DON_ID = 0x66756e2d706f6c79676f6e2d616d6f792d310000000000000000000000000000; // Example DON ID
 
     // Subscription ID for Chainlink Functions
     uint64 public subscriptionId;
@@ -48,9 +51,9 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
     event WalletsUpdated(address developerWallet, address liquidityWallet);
     event TokensMinted(address to, uint256 amount);
     event TokensBurned(address from, uint256 amount);
-    event PriceAdjusted(uint256 newTotalSupply);
+    event SupplyRebased(uint256 newTotalSupply);
     event FunctionsRequestSent(bytes32 indexed requestId);
-    event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newTotalSupply);
+    event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
 
     // Stored total market cap
@@ -68,7 +71,7 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
         uint64 _subscriptionId
     )
         ERC20("COIN100", "C100")
-        Ownable(msg.sender)
+        Ownable()
         FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
     {
         require(_developerWallet != address(0), "Invalid developer wallet address");
@@ -88,49 +91,12 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
     }
 
     /**
-     * @dev See {IERC20-transfer}.
-     *
-     * Requirements:
-     *
-     * - `to` cannot be the zero address.
-     * - the caller must have a balance of at least `value`.
-     */
-    function transfer(address to, uint256 value) public override returns (bool) {
-        address owner = _msgSender();
-        safeTransfer(owner, to, value);
-        return true;
-    }
-
-    /**
-     * @dev See {IERC20-transferFrom}.
-     *
-     * Skips emitting an {Approval} event indicating an allowance update. This is not
-     * required by the ERC. See {xref-ERC20-_approve-address-address-uint256-bool-}[_approve].
-     *
-     * NOTE: Does not update the allowance if the current allowance
-     * is the maximum `uint256`.
-     *
-     * Requirements:
-     *
-     * - `from` and `to` cannot be the zero address.
-     * - `from` must have a balance of at least `value`.
-     * - the caller must have allowance for ``from``'s tokens of at least
-     * `value`.
-     */
-    function transferFrom(address from, address to, uint256 value) public override returns (bool) {
-        address spender = _msgSender();
-        _spendAllowance(from, spender, value);
-        safeTransfer(from, to, value);
-        return true;
-    }
-
-    /**
-     * @dev Overrides the ERC20 _transfer function to include fee logic.
+     * @dev Override the ERC20 _transfer function to include fee logic.
      * @param sender Address sending the tokens.
      * @param recipient Address receiving the tokens.
      * @param amount Amount of tokens being transferred.
      */
-    function safeTransfer(address sender, address recipient, uint256 amount) internal whenNotPaused {
+    function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
         // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
             super._transfer(sender, recipient, amount);
@@ -229,15 +195,10 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
                 "}"
             )
         );
+
         // Initialize a new FunctionsRequest
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source);
-
-        // // Set any secrets if required (empty in this case)
-        // req.setSecrets("");
-
-        // // Set any arguments if required (empty in this case)
-        // req.setArgs("");
 
         // Encode the request
         bytes memory encodedRequest = req.encodeCBOR();
@@ -289,23 +250,33 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
      * - Example: If market cap increases, mint tokens; if it decreases, burn tokens.
      */
     function adjustSupply(uint256 fetchedMarketCap) internal {
-        // Example logic: Adjust total supply proportionally to the market cap
-        // Initial market cap assumed at deployment
-        uint256 initialMarketCap = 3_380_000_000_000;
+        // Define the target price
+        uint256 targetPrice = 1e15; // $0.001 with 18 decimals
 
-        // Calculate the desired supply based on the ratio
-        uint256 desiredSupply = (INITIAL_SUPPLY * fetchedMarketCap) / initialMarketCap;
+        // Calculate the desired supply based on the fetched market cap
+        // desiredSupply = fetchedMarketCap / targetPrice
+        // Since targetPrice is 0.001, and considering 18 decimals:
+        // desiredSupply = fetchedMarketCap * 1e18 / 1e-3 = fetchedMarketCap * 1e21
+        // To avoid overflow, adjust the formula accordingly
+
+        // Convert fetchedMarketCap to have 18 decimals
+        uint256 fetchedMarketCapAdjusted = fetchedMarketCap * 1e18;
+
+        // desiredSupply = fetchedMarketCap / targetPrice
+        // targetPrice = 0.001 = 1e-3, thus:
+        // desiredSupply = fetchedMarketCap / 1e-3 = fetchedMarketCap * 1e3
+        uint256 desiredSupply = (fetchedMarketCap * 1e3);
 
         uint256 currentSupply = totalSupply();
 
         if (desiredSupply > currentSupply) {
             uint256 mintAmount = desiredSupply - currentSupply;
             _mint(owner(), mintAmount);
-            emit PriceAdjusted(desiredSupply);
+            emit SupplyRebased(desiredSupply);
         } else if (desiredSupply < currentSupply) {
             uint256 burnAmount = currentSupply - desiredSupply;
             _burn(owner(), burnAmount);
-            emit PriceAdjusted(desiredSupply);
+            emit SupplyRebased(desiredSupply);
         }
         // If desiredSupply == currentSupply, no action is taken
     }
@@ -332,5 +303,35 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
      */
     function updateSubscriptionId(uint64 _subscriptionId) external onlyOwner {
         subscriptionId = _subscriptionId;
+    }
+
+    /**
+     * @dev Chainlink Keepers: check if it's time to perform upkeep.
+     * @param checkData Not used in this implementation.
+     * @return upkeepNeeded Boolean indicating whether upkeep is needed.
+     * @return performData Not used in this implementation.
+     */
+    function checkUpkeep(bytes calldata /* checkData */) external view override returns (bool upkeepNeeded, bytes memory /* performData */) {
+        upkeepNeeded = (block.timestamp - lastRebaseTime) > rebaseInterval;
+    }
+
+    /**
+     * @dev Chainlink Keepers: perform the upkeep by requesting market cap data.
+     * @param performData Not used in this implementation.
+     */
+    function performUpkeep(bytes calldata /* performData */) external override {
+        if ((block.timestamp - lastRebaseTime) > rebaseInterval) {
+            lastRebaseTime = block.timestamp;
+            requestMarketCapData();
+        }
+    }
+
+    /**
+     * @dev Allows the owner to set a new rebasing interval.
+     * @param _newInterval The new rebasing interval in seconds.
+     */
+    function setRebaseInterval(uint256 _newInterval) external onlyOwner {
+        require(_newInterval >= 1 days, "Interval too short");
+        rebaseInterval = _newInterval;
     }
 }
