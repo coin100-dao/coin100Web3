@@ -10,13 +10,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import { FunctionsClient } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 
+// Import Chainlink Automation Contracts
+import { AutomationCompatibleInterface } from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 
 /**
  * @title COIN100
  * @dev A decentralized cryptocurrency index fund representing the top 100 cryptocurrencies by market capitalization.
  */
-contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
+contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompatibleInterface {
     using FunctionsRequest for FunctionsRequest.Request;
+
     // Addresses for fee collection
     address public developerWallet;
     address public liquidityWallet;
@@ -39,7 +42,7 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
     // Subscription ID for Chainlink Functions
     uint64 public subscriptionId;
 
-    // Chainlink Keepers Configuration
+    // Chainlink Automation Configuration
     uint256 public lastRebaseTime;
     uint256 public rebaseInterval = 1 days;
 
@@ -52,6 +55,8 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
     event FunctionsRequestSent(bytes32 indexed requestId);
     event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newTotalSupply);
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
+    event RebaseIntervalUpdated(uint256 newInterval);
+    event UpkeepPerformed(bytes performData);
 
     // Stored total market cap
     uint256 public totalMarketCap;
@@ -96,8 +101,8 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
      * - the caller must have a balance of at least `value`.
      */
     function transfer(address to, uint256 value) public override returns (bool) {
-        address owner = _msgSender();
-        safeTransfer(owner, to, value);
+        address owner_ = _msgSender();
+        safeTransfer(owner_, to, value);
         return true;
     }
 
@@ -214,7 +219,7 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
      */
-    function requestMarketCapData() external onlyOwner {
+    function requestMarketCapData() public onlyOwner {
         // JavaScript code to fetch total market cap
         string memory source = string(
             abi.encodePacked(
@@ -232,12 +237,6 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
         // Initialize a new FunctionsRequest
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source);
-
-        // // Set any secrets if required (empty in this case)
-        // req.setSecrets("");
-
-        // // Set any arguments if required (empty in this case)
-        // req.setArgs("");
 
         // Encode the request
         bytes memory encodedRequest = req.encodeCBOR();
@@ -332,5 +331,43 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
      */
     function updateSubscriptionId(uint64 _subscriptionId) external onlyOwner {
         subscriptionId = _subscriptionId;
+    }
+
+    /**
+     * @dev Allows the owner to update the rebase interval.
+     * @param _newInterval The new interval in seconds.
+     */
+    function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
+        require(_newInterval >= 1 days, "Interval too short");
+        rebaseInterval = _newInterval;
+        emit RebaseIntervalUpdated(_newInterval);
+    }
+
+    /**
+     * @dev Chainlink Automation checkUpkeep function.
+     * This function is called by Chainlink nodes to check if upkeep is needed.
+     * It returns true if the rebase interval has passed.
+     */
+    function checkUpkeep(bytes calldata /* checkData */) external view override returns (bool upkeepNeeded, bytes memory) {
+        upkeepNeeded = (block.timestamp - lastRebaseTime) >= rebaseInterval;
+        // performData can be empty as we don't need to pass any specific data
+        return (upkeepNeeded, "");
+    }
+
+    /**
+     * @dev Chainlink Automation performUpkeep function.
+     * This function is called by Chainlink nodes when checkUpkeep returns true.
+     * It performs the upkeep by requesting new market cap data.
+     */
+    function performUpkeep(bytes calldata) external override {
+        // Check again to prevent multiple executions
+        if ((block.timestamp - lastRebaseTime) < rebaseInterval) {
+            return;
+        }
+
+        lastRebaseTime = block.timestamp;
+        requestMarketCapData();
+
+        emit UpkeepPerformed("");
     }
 }
