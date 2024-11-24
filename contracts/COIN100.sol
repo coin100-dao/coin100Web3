@@ -211,10 +211,13 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient {
         // JavaScript code to fetch total market cap
         string memory source = string(
             abi.encodePacked(
-                "const axios = require('axios');",
                 "async function run(request) {",
-                "  const response = await axios.get('https://api.coingecko.com/api/v3/global');",
-                "  const totalMarketCap = response.data.data.total_market_cap.usd;",
+                "  const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1');",
+                "  const data = await response.json();",
+                "  let totalMarketCap = 0;",
+                "  for (const coin of data) {",
+                "    totalMarketCap += coin.market_cap;",
+                "  }",
                 "  return totalMarketCap.toString();",
                 "}"
             )
