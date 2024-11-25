@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 // Import Chainlink Functions Contracts
 import { FunctionsClient } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
@@ -14,26 +15,43 @@ import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0
 import { AutomationCompatibleInterface } from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 
 /**
- * @title COIN100
- * @dev A decentralized cryptocurrency index fund representing the top 100 cryptocurrencies by market capitalization.
+ * @title COIN100 (C100) Token
+ * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization.
  */
-contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompatibleInterface {
+contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, AutomationCompatibleInterface {
     using FunctionsRequest for FunctionsRequest.Request;
 
-    // Addresses for fee collection
+    // =======================
+    // ======= EVENTS ========
+    // =======================
+    event PriceAdjusted(uint256 newMarketCap, uint256 timestamp);
+    event TokensBurned(uint256 amount);
+    event TokensMinted(uint256 amount);
+    event FeesUpdated(uint256 developerFee, uint256 liquidityFee, uint256 burnFee);
+    event WalletsUpdated(address developerWallet, address liquidityWallet);
+    event RebaseIntervalUpdated(uint256 newInterval);
+    event UpkeepPerformed(bytes performData);
+    event FunctionsRequestSent(bytes32 indexed requestId);
+    event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
+    event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
+
+    // =======================
+    // ======= STATE =========
+    // =======================
+    uint256 public constant INITIAL_PRICE = 1e16; // $0.01 with 18 decimals
+    uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
+    uint256 public lastMarketCap;
+    uint256 public feePercent = 3; // 3% fee on transactions
+    uint256 public constant SCALING_FACTOR = 380000;
+
     address public developerWallet;
     address public liquidityWallet;
 
     // Transaction fee percentages (in basis points)
-    uint256 public developerFee = 30; // 0.3%
-    uint256 public liquidityFee = 30; // 0.3%
-    uint256 public constant FEE_DIVISOR = 10_000;
-
-    // Total supply constants
-    uint256 public constant INITIAL_SUPPLY = 10_000_000_000 * 10**18; // 10 Billion tokens
-    uint256 public constant DEVELOPER_ALLOCATION = (INITIAL_SUPPLY * 5) / 100; // 5%
-    uint256 public constant LIQUIDITY_ALLOCATION = (INITIAL_SUPPLY * 5) / 100; // 5%
-    uint256 public constant PUBLIC_SALE_ALLOCATION = INITIAL_SUPPLY - DEVELOPER_ALLOCATION - LIQUIDITY_ALLOCATION; // 90%
+    uint256 public developerFee = 100; // 1%
+    uint256 public liquidityFee = 100; // 1%
+    uint256 public burnFee = 100; // 1%
+    uint256 public constant FEE_DIVISOR = 10000;
 
     // Chainlink Functions Configuration
     address public constant FUNCTIONS_ROUTER_ADDRESS = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De; // Chainlink Functions Router Address on Polygon
@@ -44,25 +62,16 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
 
     // Chainlink Automation Configuration
     uint256 public lastRebaseTime;
-    uint256 public rebaseInterval = 1 days;
+    uint256 public rebaseInterval = 1 hours;
 
-    // Events
-    event FeesUpdated(uint256 developerFee, uint256 liquidityFee);
-    event WalletsUpdated(address developerWallet, address liquidityWallet);
-    event TokensMinted(address to, uint256 amount);
-    event TokensBurned(address from, uint256 amount);
-    event PriceAdjusted(uint256 newTotalSupply);
-    event FunctionsRequestSent(bytes32 indexed requestId);
-    event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newTotalSupply);
-    event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
-    event RebaseIntervalUpdated(uint256 newInterval);
-    event UpkeepPerformed(bytes performData);
+    // Initial Market Cap for scaling (assumed initial top 100 market cap at deployment)
+    uint256 public initialMarketCap = 3_800_000_000_000; // 3.8 Trillion USD
 
     // Stored total market cap
     uint256 public totalMarketCap;
 
     /**
-     * @dev Constructor that mints the initial allocations and sets up Chainlink Functions.
+     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
      * @param _developerWallet Address of the developer wallet.
      * @param _liquidityWallet Address of the liquidity wallet.
      * @param _subscriptionId Chainlink subscription ID.
@@ -76,52 +85,36 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
         Ownable(msg.sender)
         FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
     {
-        require(_developerWallet != address(0), "Invalid developer wallet address");
-        require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
+        require(_developerWallet != address(0), "Invalid developer wallet");
+        require(_liquidityWallet != address(0), "Invalid liquidity wallet");
 
         developerWallet = _developerWallet;
         liquidityWallet = _liquidityWallet;
         subscriptionId = _subscriptionId;
 
-        // Mint initial allocations
-        _mint(_developerWallet, DEVELOPER_ALLOCATION);
-        _mint(_liquidityWallet, LIQUIDITY_ALLOCATION);
-        _mint(msg.sender, PUBLIC_SALE_ALLOCATION);
+        // Mint allocations
+        _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
+        _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
+        _mint(liquidityWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Liquidity
+        _mint(address(this), (TOTAL_SUPPLY * 10) / 100); // 10% Reserve
+
+        // Initial Burn of 10% Reserve
+        _burn(address(this), (TOTAL_SUPPLY * 10) / 100); // Burn 10% Reserve
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
     }
 
-    /**
-     * @dev See {IERC20-transfer}.
-     *
-     * Requirements:
-     *
-     * - `to` cannot be the zero address.
-     * - the caller must have a balance of at least `value`.
-     */
+    // =======================
+    // ====== ERC20 OVERRIDES ==
+    // =======================
+
     function transfer(address to, uint256 value) public override returns (bool) {
         address owner_ = _msgSender();
         safeTransfer(owner_, to, value);
         return true;
     }
 
-    /**
-     * @dev See {IERC20-transferFrom}.
-     *
-     * Skips emitting an {Approval} event indicating an allowance update. This is not
-     * required by the ERC. See {xref-ERC20-_approve-address-address-uint256-bool-}[_approve].
-     *
-     * NOTE: Does not update the allowance if the current allowance
-     * is the maximum `uint256`.
-     *
-     * Requirements:
-     *
-     * - `from` and `to` cannot be the zero address.
-     * - `from` must have a balance of at least `value`.
-     * - the caller must have allowance for ``from``'s tokens of at least
-     * `value`.
-     */
     function transferFrom(address from, address to, uint256 value) public override returns (bool) {
         address spender = _msgSender();
         _spendAllowance(from, spender, value);
@@ -135,91 +128,38 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
      * @param recipient Address receiving the tokens.
      * @param amount Amount of tokens being transferred.
      */
-    function safeTransfer(address sender, address recipient, uint256 amount) internal whenNotPaused {
+    function safeTransfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
         // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
             super._transfer(sender, recipient, amount);
         } else {
-            uint256 totalFee = developerFee + liquidityFee;
-            uint256 feeAmount = (amount * totalFee) / FEE_DIVISOR; // Calculate total fee
-            uint256 amountAfterFee = amount - feeAmount;
+            uint256 feeAmount = (amount * feePercent) / 100;
+            uint256 transferAmount = amount - feeAmount;
 
             // Calculate individual fees
             uint256 devFeeAmount = (amount * developerFee) / FEE_DIVISOR;
-            uint256 liqFeeAmount = feeAmount - devFeeAmount; // Remaining fee goes to liquidity
+            uint256 liqFeeAmount = (amount * liquidityFee) / FEE_DIVISOR;
+            uint256 burnFeeAmount = (amount * burnFee) / FEE_DIVISOR;
 
             // Transfer fees to respective wallets
-            super._transfer(sender, developerWallet, devFeeAmount);
-            super._transfer(sender, liquidityWallet, liqFeeAmount);
+            super._transfer(sender, developerWallet, devFeeAmount); // 1% to Developer
+            super._transfer(sender, liquidityWallet, liqFeeAmount); // 1% to Liquidity
+            super._transfer(sender, address(0), burnFeeAmount); // 1% Burn
 
-            // Transfer the remaining amount to the recipient
-            super._transfer(sender, recipient, amountAfterFee);
+            // Transfer remaining tokens to recipient
+            super._transfer(sender, recipient, transferAmount);
         }
     }
 
-    /**
-     * @dev Allows the owner to update transaction fees.
-     * @param _developerFee New developer fee in basis points.
-     * @param _liquidityFee New liquidity fee in basis points.
-     */
-    function updateFees(uint256 _developerFee, uint256 _liquidityFee) external onlyOwner {
-        require(_developerFee + _liquidityFee <= 1000, "Total fees cannot exceed 10%");
-        developerFee = _developerFee;
-        liquidityFee = _liquidityFee;
-        emit FeesUpdated(_developerFee, _liquidityFee);
-    }
-
-    /**
-     * @dev Allows the owner to update wallet addresses for fee collection.
-     * @param _developerWallet New developer wallet address.
-     * @param _liquidityWallet New liquidity wallet address.
-     */
-    function updateWallets(address _developerWallet, address _liquidityWallet) external onlyOwner {
-        require(_developerWallet != address(0), "Invalid developer wallet address");
-        require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
-        developerWallet = _developerWallet;
-        liquidityWallet = _liquidityWallet;
-        emit WalletsUpdated(_developerWallet, _liquidityWallet);
-    }
-
-    /**
-     * @dev Allows the owner to mint new tokens.
-     * @param to Address to receive the minted tokens.
-     * @param amount Amount of tokens to mint.
-     */
-    function mint(address to, uint256 amount) external onlyOwner {
-        _mint(to, amount);
-        emit TokensMinted(to, amount);
-    }
-
-    /**
-     * @dev Allows the owner to burn tokens from a specific address.
-     * @param from Address from which tokens will be burned.
-     * @param amount Amount of tokens to burn.
-     */
-    function burn(address from, uint256 amount) external onlyOwner {
-        _burn(from, amount);
-        emit TokensBurned(from, amount);
-    }
-
-    /**
-     * @dev Allows the owner to pause all token transfers.
-     */
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    /**
-     * @dev Allows the owner to unpause all token transfers.
-     */
-    function unpause() external onlyOwner {
-        _unpause();
-    }
+    // =======================
+    // ====== FUNCTIONS =======
+    // =======================
 
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
      */
     function requestMarketCapData() public onlyOwner {
+        lastRebaseTime = block.timestamp;
         // JavaScript code to fetch total market cap
         string memory source = string(
             abi.encodePacked(
@@ -234,6 +174,7 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
                 "}"
             )
         );
+
         // Initialize a new FunctionsRequest
         FunctionsRequest.Request memory req;
         req.initializeRequestForInlineJavaScript(source);
@@ -287,26 +228,31 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
      * - Mint or burn tokens to match the desired supply.
      * - Example: If market cap increases, mint tokens; if it decreases, burn tokens.
      */
-    function adjustSupply(uint256 fetchedMarketCap) internal {
-        // Example logic: Adjust total supply proportionally to the market cap
-        // Initial market cap assumed at deployment
-        uint256 initialMarketCap = 3_380_000_000_000;
+    function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
+        // Calculate the target C100 market cap based on scaling factor
+        uint256 targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR;
+        uint256 currentC100MarketCap = (totalSupply() * INITIAL_PRICE) / 1e18; // Calculate current market cap
 
-        // Calculate the desired supply based on the ratio
-        uint256 desiredSupply = (INITIAL_SUPPLY * fetchedMarketCap) / initialMarketCap;
+        // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
+        uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
 
-        uint256 currentSupply = totalSupply();
-
-        if (desiredSupply > currentSupply) {
-            uint256 mintAmount = desiredSupply - currentSupply;
-            _mint(owner(), mintAmount);
-            emit PriceAdjusted(desiredSupply);
-        } else if (desiredSupply < currentSupply) {
-            uint256 burnAmount = currentSupply - desiredSupply;
-            _burn(owner(), burnAmount);
-            emit PriceAdjusted(desiredSupply);
+        if (paf > 1e18) {
+            // Market Cap Increased - Mint tokens to increase supply
+            uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
+            _mint(address(this), mintAmount);
+            emit TokensMinted(mintAmount);
+        } else if (paf < 1e18) {
+            // Market Cap Decreased - Burn tokens to decrease supply
+            uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
+            _burn(address(this), burnAmount);
+            emit TokensBurned(burnAmount);
         }
-        // If desiredSupply == currentSupply, no action is taken
+
+        // Update the lastMarketCap
+        lastMarketCap = fetchedMarketCap;
+
+        // Emit PriceAdjusted event
+        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
     /**
@@ -325,12 +271,43 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
         return result;
     }
 
+    // =======================
+    // ====== ADMIN ==========
+    // =======================
+
+    /**
+     * @dev Allows the owner to update transaction fees.
+     * @param _developerFee New developer fee in basis points.
+     * @param _liquidityFee New liquidity fee in basis points.
+     * @param _burnFee New burn fee in basis points.
+     */
+    function updateFees(uint256 _developerFee, uint256 _liquidityFee, uint256 _burnFee) external onlyOwner {
+        require(_developerFee + _liquidityFee + _burnFee <= 300, "Total fees cannot exceed 3%");
+        developerFee = _developerFee;
+        liquidityFee = _liquidityFee;
+        burnFee = _burnFee;
+        emit FeesUpdated(_developerFee, _liquidityFee, _burnFee);
+    }
+
+    /**
+     * @dev Allows the owner to update wallet addresses for fee collection.
+     * @param _developerWallet New developer wallet address.
+     * @param _liquidityWallet New liquidity wallet address.
+     */
+    function updateWallets(address _developerWallet, address _liquidityWallet) external onlyOwner {
+        require(_developerWallet != address(0), "Invalid developer wallet address");
+        require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
+        developerWallet = _developerWallet;
+        liquidityWallet = _liquidityWallet;
+        emit WalletsUpdated(_developerWallet, _liquidityWallet);
+    }
+
     /**
      * @dev Allows the owner to update the Chainlink subscription ID.
      * @param _subscriptionId The new subscription ID.
      */
-    function updateSubscriptionId(uint64 _subscriptionId) external onlyOwner {
-        subscriptionId = _subscriptionId;
+    function updateSubscriptionId(uint64 _subscriptionId_) external onlyOwner {
+        subscriptionId = _subscriptionId_;
     }
 
     /**
@@ -338,36 +315,56 @@ contract COIN100 is ERC20, Pausable, Ownable, FunctionsClient, AutomationCompati
      * @param _newInterval The new interval in seconds.
      */
     function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
-        require(_newInterval >= 1 days, "Interval too short");
+        require(_newInterval >= 1 hours, "Interval too short");
         rebaseInterval = _newInterval;
         emit RebaseIntervalUpdated(_newInterval);
     }
+
+    // =======================
+    // ====== PAUSABLE ========
+    // =======================
+
+    /**
+     * @dev Allows the owner to pause all token transfers.
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @dev Allows the owner to unpause all token transfers.
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    // =======================
+    // ====== AUTOMATION ======
+    // =======================
 
     /**
      * @dev Chainlink Automation checkUpkeep function.
      * This function is called by Chainlink nodes to check if upkeep is needed.
      * It returns true if the rebase interval has passed.
+     * @param checkData Not used in this implementation.
+     * @return upkeepNeeded Whether upkeep is needed.
+     * @return performData Empty bytes.
      */
-    function checkUpkeep(bytes calldata /* checkData */) external view override returns (bool upkeepNeeded, bytes memory) {
-        upkeepNeeded = (block.timestamp - lastRebaseTime) >= rebaseInterval;
+    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
+        upkeepNeeded = block.timestamp >= lastRebaseTime + rebaseInterval;
         // performData can be empty as we don't need to pass any specific data
-        return (upkeepNeeded, "");
+        performData = "";
+        return (upkeepNeeded, bytes(""));
     }
 
     /**
      * @dev Chainlink Automation performUpkeep function.
      * This function is called by Chainlink nodes when checkUpkeep returns true.
      * It performs the upkeep by requesting new market cap data.
+     * @param performData Not used in this implementation.
      */
-    function performUpkeep(bytes calldata) external override {
-        // Check again to prevent multiple executions
-        if ((block.timestamp - lastRebaseTime) < rebaseInterval) {
-            return;
-        }
-
-        lastRebaseTime = block.timestamp;
+    function performUpkeep(bytes calldata performData) external override {
         requestMarketCapData();
-
-        emit UpkeepPerformed("");
+        emit UpkeepPerformed(performData);
     }
 }
