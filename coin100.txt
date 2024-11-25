@@ -14,8 +14,6 @@ what tokonomics do we need ?
 the price of this should grow as new buyers buy the token and price should be adjusted hourly based on total market cap for top 100 coin
 we should think of adjusting the price without spending money ( we could use chainlink functions and automations)
 but most importantly we need robust tokonmics to bring money to the dev team and project and holders 
-
-Id like to see price goes from 0.01 to $100
 While taking in account total market cap for top 100 and holders of the coin
 current market cap of top 100 coins market cap is 3.8 Trillion
 need to start really small and go up and appreacate but also keep tracking the topp 100 coins
@@ -40,13 +38,14 @@ come up with a genius Tokenomics structer and price adjustment mechanism and wri
 need a smart price adjustment mechainsim wither its burning or somthing else doest matter .. need full code ... dont give me examples or directions in code .. come up with solutions and implement them 
 price adjustment based on total marekt cap on top 100 from coingecko could be 
 "async function run(request) {",
-"  const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1');",
-"  const data = await response.json();",
-"  let totalMarketCap = 0;",
-"  for (const coin of data) {",
-"    totalMarketCap += coin.market_cap;",
-"  }",
-"  return totalMarketCap.toString();",
-"}"
+                "  const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1');",
+                "  const data = await response.json();",
+                "  let totalMarketCap = 0;",
+                "  for (const coin of data) {",
+                "    totalMarketCap += coin.market_cap;",
+                "  }",
+                "  return totalMarketCap.toString();",
+                "}"
 
 
+keep in mind we're starting with no asset backing ... i will be buying the token after it's minted and ready for public sale and i'll buy with like $50 only .... 
