@@ -17,6 +17,13 @@ but most importantly we need robust tokonmics to bring money to the dev team and
 
 Id like to see price goes from 0.01 to $100
 While taking in account total market cap for top 100 and holders of the coin
+current market cap of top 100 coins market cap is 3.8 Trillion
+need to start really small and go up and appreacate but also keep tracking the topp 100 coins
+this should be a good service similar to any index tracker stock
+
+lets focus on how token holders could make money over time ... like price should appreciate not just becouse more holders are there
+but also market cap changes ? not sure ... need a genius mathamitcal solution
+
 
 what tokenomics do we need ? give me a solid plan
 make sure everyone makes money .... this should be robust and production ready 
