@@ -37,3 +37,16 @@ we need a solid contract but nothing too complicated but with all the things i r
 solid contract with chain link automation, a chainlink function that runs on schedule interacts with contract and requestMarketCapData via coingecko 
 make sure the token value grows , what i mean make sure the algorithm knows that and  calculates it 
 come up with a genius Tokenomics structer and price adjustment mechanism and write full code after all the plan you'll layout .. full .sol code for Coin100 (C100) token
+need a smart price adjustment mechainsim wither its burning or somthing else doest matter .. need full code ... dont give me examples or directions in code .. come up with solutions and implement them 
+price adjustment based on total marekt cap on top 100 from coingecko could be 
+"async function run(request) {",
+"  const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1');",
+"  const data = await response.json();",
+"  let totalMarketCap = 0;",
+"  for (const coin of data) {",
+"    totalMarketCap += coin.market_cap;",
+"  }",
+"  return totalMarketCap.toString();",
+"}"
+
+
