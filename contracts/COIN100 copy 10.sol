@@ -16,6 +16,7 @@ contract COIN100 is ERC20, Ownable, ReentrancyGuard, AutomationCompatibleInterfa
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 10**18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
     uint256 public feePercent = 3; // 3% fee on transactions
+    uint256 public constant SCALING_FACTOR = 380000;
 
     address public developerWallet;
     address public liquidityWallet;
@@ -27,6 +28,7 @@ contract COIN100 is ERC20, Ownable, ReentrancyGuard, AutomationCompatibleInterfa
     // Events
     event PriceAdjusted(uint256 newMarketCap, uint256 timestamp);
     event TokensBurned(uint256 amount);
+    event TokensMinted(uint256 amount);
 
     constructor(address _developerWallet, address _liquidityWallet) ERC20("COIN100", "C100") {
         require(_developerWallet != address(0), "Invalid developer wallet");
@@ -43,7 +45,7 @@ contract COIN100 is ERC20, Ownable, ReentrancyGuard, AutomationCompatibleInterfa
 
         // Initialize Chainlink
         setPublicChainlinkToken();
-        jobId = "YOUR_JOB_ID"; // Replace with actual Job ID
+        jobId = "JOB_ID"; // Replace with actual Job ID
         fee = 0.1 * 10 ** 18; // 0.1 LINK (Varies by network and job)
     }
 
@@ -83,29 +85,27 @@ contract COIN100 is ERC20, Ownable, ReentrancyGuard, AutomationCompatibleInterfa
     // Fulfill Market Cap Data
     function fulfillMarketCap(bytes32 _requestId, uint256 _marketCap) public recordChainlinkFulfillment(_requestId) {
         require(_marketCap > 0, "Invalid market cap data");
-        lastMarketCap = _marketCap;
         _adjustPrice(_marketCap);
         emit PriceAdjusted(_marketCap, block.timestamp);
     }
 
     // Adjust Price Based on Market Cap
     function _adjustPrice(uint256 _newMarketCap) internal nonReentrant {
-        uint256 currentMarketCap = lastMarketCap;
-        if (currentMarketCap == 0) {
-            currentMarketCap = _newMarketCap;
-        }
+        uint256 targetC100MarketCap = _newMarketCap / SCALING_FACTOR;
+        uint256 currentC100MarketCap = totalSupply() * INITIAL_PRICE / 1e18; // Adjust based on decimals
 
-        uint256 paf = (_newMarketCap * 1e18) / currentMarketCap; // Precision handling
+        uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap; // Precision handling
 
         if (paf > 1e18) {
-            // Market Cap Increased - Burn tokens to decrease supply
-            uint256 burnAmount = (totalSupply() * (paf - 1e18)) / 1e18;
+            // Market Cap Increased - Mint tokens to increase supply
+            uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
+            _mint(address(this), mintAmount);
+            emit TokensMinted(mintAmount);
+        } else if (paf < 1e18) {
+            // Market Cap Decreased - Burn tokens to decrease supply
+            uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
-        } else if (paf < 1e18) {
-            // Market Cap Decreased - Mint tokens to increase supply
-            uint256 mintAmount = (totalSupply() * (1e18 - paf)) / 1e18;
-            _mint(address(this), mintAmount);
         }
 
         // Update lastMarketCap
