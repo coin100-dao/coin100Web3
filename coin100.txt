@@ -1,0 +1,36 @@
+idea of contract
+**COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S\&P 500, COIN100
+
+**Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
+
+want to create this token to track top 100 coin mareket cap and its price should reflect so
+we need a mechanism to which this will work like magic 
+we need 5% to developer wallet and 5% to liquidity wallet 
+and 3% fees on transactions (1% for dev and 1 for liquidity and 1 to burn )
+
+now we want the start price to be 0.01 
+but we need tokenomics 
+what tokonomics do we need ? 
+the price of this should grow as new buyers buy the token and price should be adjusted hourly based on total market cap for top 100 coin
+we should think of adjusting the price without spending money ( we could use chainlink functions and automations)
+but most importantly we need robust tokonmics to bring money to the dev team and project and holders 
+
+Id like to see price goes from 0.01 to $100
+While taking in account total market cap for top 100 and holders of the coin
+
+what tokenomics do we need ? give me a solid plan
+make sure everyone makes money .... this should be robust and production ready 
+give me the full algorithm without giving me the code 
+need full plan and justify with math and numbers how people will make money 
+
+remember .. we dont have money to back our token with assets .. we want to appreciate more the more people buy it and start it's price at 0.01 
+give me all possible scenarios that could happen , be realistic with your numbers ... like i'd like to know all scenarios where our market cap is $1000 , and then when market cap is 10k and then when its 100k and million 
+
+we need a solid contract but nothing too complicated but with all the things i requested before 
+solid contract with chain link automation, a chainlink function that runs on schedule interacts with contract and requestMarketCapData via coingecko 
+make sure the token value grows , what i mean make sure the algorithm knows that and  calucaltes it 
+
+
+
+
+
