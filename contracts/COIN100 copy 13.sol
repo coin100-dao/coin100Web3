@@ -30,9 +30,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ======= EVENTS ========
     // =======================
-    event PriceAdjusted(uint256 newMarketCap, uint256 timestamp);
-    event TokensBurned(uint256 amount);
-    event TokensMinted(uint256 amount);
     event FeesUpdated(uint256 developerFee, uint256 burnFee);
     event WalletsUpdated(address developerWallet);
     event RebaseIntervalUpdated(uint256 newInterval);
@@ -42,12 +39,17 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
     event RewardsDistributed(address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
-    event RewardsReplenished(uint256 amount, uint256 timestamp); // New Event
+    event RewardsReplenished(uint256 amount, uint256 timestamp);
+    event SupplyAdjusted(uint256 minted, uint256 burned, uint256 newMarketCap, uint256 timestamp);
 
     // =======================
     // ======= STATE =========
     // =======================
     AggregatorV3Interface internal priceFeed;
+    // Uniswap
+    IUniswapV2Router02 public uniswapV2Router;
+    address public uniswapV2RouterAddress;
+    address public uniswapV2Pair;
 
     // Transaction fee percentages (in basis points)
     uint256 public feePercent = 3; // 3% total fee
@@ -75,17 +77,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     uint256 public totalMarketCap; // Current total market cap in USD
 
-    // Uniswap
-    IUniswapV2Router02 public uniswapV2Router;
-    address public uniswapV2Pair;
 
     // Reward Tracking Variables
     uint256 public rewardPerTokenStored;
     uint256 public lastUpdateTime;
-    uint256 public rewardRate = 10; // Updated: 10 C100 tokens distributed per second
     uint256 public totalRewards;
-    uint256 public constant MAX_REWARD_RATE = 20; // Upper limit
-    uint256 public constant MIN_REWARD_RATE = 5;  // Lower limit
+    uint256 public rewardRate = 864000; // 864,000 C100 tokens distributed per day (10 tokens/sec * 86400 sec/day)
+    uint256 public constant MAX_REWARD_RATE = 1728000; // 1,728,000 tokens/day (equivalent to 20 tokens/sec)
+    uint256 public constant MIN_REWARD_RATE = 432000;  // 432,000 tokens/day (equivalent to 5 tokens/sec)
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
@@ -99,13 +98,15 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     constructor(
         address _developerWallet,
         uint64 _subscriptionId,
-        address _priceFeedAddress
+        address _priceFeedAddress,
+        address _uniswapRouterAddress // New parameter
     )
         ERC20("COIN100", "C100")
         Ownable()
         FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
     {
         require(_developerWallet != address(0), "Invalid developer wallet");
+        require(_uniswapRouterAddress != address(0), "Invalid Uniswap router address");
 
         developerWallet = _developerWallet;
         subscriptionId = _subscriptionId;
@@ -123,12 +124,15 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         lastUpdateTime = block.timestamp;
 
         // Initialize Uniswap V2 Router
-        uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
+        uniswapV2Router = IUniswapV2Router02(_uniswapRouterAddress);
+        uniswapV2RouterAddress = _uniswapRouterAddress;
 
         // Create a Uniswap pair for this token
         uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
             .createPair(address(this), uniswapV2Router.WETH());
-        
+
+        require(uniswapV2Pair != address(0), "Failed to create Uniswap pair");
+
         // Approve the router to spend tokens
         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
 
@@ -195,7 +199,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             
         ) = priceFeed.latestRoundData();
         require(answer > 0, "Invalid price data");
-        price = uint256(answer);
+        
+        uint8 decimals_ = priceFeed.decimals();
+        price = uint256(answer) * (10 ** (18 - decimals_)); // Normalize to 18 decimals if needed
     }
 
     /**
@@ -228,7 +234,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         bytes32 requestId = _sendRequest(
             encodedRequest,
             subscriptionId,
-            300000, // gas limit
+            200000, // gas limit
             DON_ID
         );
 
@@ -262,43 +268,47 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-     * @dev Adjusts the token supply based on the latest market cap data.
-     * @param fetchedMarketCap The latest total market cap in USD.
-     *
-     * Logic:
-     * - Calculate the desired total supply based on the fetched market cap and the current price.
-     * - Mint or burn tokens to match the desired supply.
-     */
+    * @dev Adjusts the token supply based on the latest market cap data.
+    * @param fetchedMarketCap The latest total market cap in USD.
+    *
+    * Logic:
+    * - Calculate the desired total supply based on the fetched market cap and the current price.
+    * - Mint or burn tokens to match the desired supply.
+    * - Emit a single SupplyAdjusted event with details of the adjustments.
+    */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         // Fetch the current price of C100 in USD with 8 decimals
         uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
 
+        require(currentPrice > 0, "Current price must be positive");
+
         // Calculate the current market cap based on the current price
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18;
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18; // Result has 8 decimals
 
         // Calculate target C100 market cap based on scaling factor
-        uint256 targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR;
+        uint256 targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR; // Ensure fetchedMarketCap has compatible decimals
 
         // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
         uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
 
+        uint256 mintAmount = 0;
+        uint256 burnAmount = 0;
+
         if (paf > 1e18) {
             // Market Cap Increased - Mint tokens to increase supply
-            uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
+            mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
             _mint(address(this), mintAmount);
-            emit TokensMinted(mintAmount);
         } else if (paf < 1e18) {
             // Market Cap Decreased - Burn tokens to decrease supply
-            uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
+            burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
             _burn(address(this), burnAmount);
-            emit TokensBurned(burnAmount);
         }
 
         // Update the lastMarketCap
         lastMarketCap = fetchedMarketCap;
 
-        // Emit PriceAdjusted event
-        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
+        // Emit the combined SupplyAdjusted event
+        emit SupplyAdjusted(mintAmount, burnAmount, fetchedMarketCap, block.timestamp);
     }
 
     /**
@@ -317,45 +327,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         return result;
     }
 
-
-    /**
-    * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
-    */
-    function distributeRewards() internal {
-        updateReward(address(0)); // Update global rewards
-
-        // Adjust the reward rate based on the current token price
-        adjustRewardRate();
-
-        // Calculate the distribution amount based on the new reward rate and rebaseInterval
-        uint256 distributionAmount = rewardRate * rebaseInterval; // tokens per second * seconds = tokens
-
-        // Check the contract's token balance in the rewards pool
-        uint256 contractBalance = balanceOf(address(this));
-        uint256 availableForDistribution = contractBalance - totalRewards;
-
-        // Adjust the distributionAmount if not enough tokens are available
-        if (availableForDistribution < distributionAmount) {
-            distributionAmount = availableForDistribution;
-        }
-
-        // Ensure there is something to distribute
-        if (distributionAmount > 0) {
-            // Update the totalRewards pool
-            totalRewards += distributionAmount;
-
-            // Emit the new event for replenishing rewards
-            emit RewardsReplenished(distributionAmount, block.timestamp);
-        }
-    }
-
     /**
      * @dev Replenishes the rewards pool by allocating tokens based on the current reward rate and interval.
      */
     function replenishRewards() internal {
         adjustRewardRate();
         
-        uint256 replenishmentAmount = rewardRate * rebaseInterval; // Adjusted for new reward rate and interval
+        uint256 replenishmentAmount = rewardRate * rebaseInterval;
         uint256 contractBalance = balanceOf(address(this));
         uint256 availableForReplenishment = contractBalance - totalRewards;
         
@@ -367,16 +345,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             totalRewards += replenishmentAmount;
             emit RewardsReplenished(replenishmentAmount, block.timestamp);
         }
-    }
-
-    /**
-    * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
-    */
-    function distributeRewardsUpdated() internal {
-        updateReward(address(0)); // Update global rewards
-
-        // Replenish rewards pool
-        replenishRewards();
     }
 
     /**
@@ -433,12 +401,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 reward = rewards[msg.sender];
         require(reward > 0, "No rewards available");
 
+        // Effects
         rewards[msg.sender] = 0;
         totalRewards -= reward;
 
+        // Interactions
         _transfer(address(this), msg.sender, reward);
 
-        emit RewardsDistributed(msg.sender, reward); // Emitting the event with the correct user
+        emit RewardsDistributed(msg.sender, reward);
     }
 
     /**
@@ -478,12 +448,12 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-     * @dev Allows the owner to update transaction fees.
-     * @param _developerFee New developer fee in basis points.
-     * @param _burnFee New burn fee in basis points.
-     */
+    * @dev Allows the owner to update transaction fees.
+    * @param _developerFee New developer fee in basis points (percentage of feePercent).
+    * @param _burnFee New burn fee in basis points (percentage of feePercent).
+    */
     function updateFees(uint256 _developerFee, uint256 _burnFee) external onlyOwner {
-        require(_developerFee + _burnFee <= 300, "Total fees cannot exceed 3%");
+        require(_developerFee + _burnFee <= FEE_DIVISOR, "Total fee allocation cannot exceed 100%");
         developerFee = _developerFee;
         burnFee = _burnFee;
         emit FeesUpdated(_developerFee, _burnFee);
