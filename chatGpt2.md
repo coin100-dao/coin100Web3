@@ -434,11 +434,3 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 this contract is built on polygon
 
 
-
-should we eleminate the liquidity pool wallet and have this available on dex via uniswap ? 
-but like we could allocate 25% autoamticaly for liquidty without a wallet ? 
-implement that please 
-also is 70% enough for public sale ? and can these early holders contirubte to the pool ? 
-and if they do , whats a good reward for them ? and how long their staking or LP needs to be vested before being allowed to totally withdraw ? maybe withdraw in chunks based on time (after certain time you withdraw certain precetnage and so on) 
-when you give me the new code ... dont give me full logic for the file 
-give me only the additions i need to add and if your modifiying a function, give me full function code 
