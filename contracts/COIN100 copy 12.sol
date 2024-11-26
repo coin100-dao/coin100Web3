@@ -19,6 +19,7 @@ import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
+
 /**
  * @title COIN100 (C100) Token
  * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization.
@@ -159,28 +160,30 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         updateReward(sender);
         updateReward(recipient);
 
-        // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
+            // Owner transfers bypass fees
             super._transfer(sender, recipient, amount);
-        } else {
-            uint256 feeAmount = (amount * feePercent) / 100;
-            uint256 transferAmount = amount - feeAmount;
-
-            // Calculate individual fees
-            uint256 devFeeAmount = (amount * developerFee) / FEE_DIVISOR;
-            uint256 burnFeeAmount = (amount * burnFee) / FEE_DIVISOR;
-            uint256 rewardFeeAmount = (amount * liquidityRewardPercent) / 100; // Allocate to rewards
-
-            // Transfer fees to respective wallets
-            super._transfer(sender, developerWallet, devFeeAmount); // 1% to Developer
-            super._transfer(sender, address(0), burnFeeAmount); // 1% Burn
-
-            // Allocate rewards
-            totalRewards += rewardFeeAmount;
-
-            // Transfer remaining tokens to recipient
-            super._transfer(sender, recipient, transferAmount);
+            return;
         }
+
+        // Calculate total fee
+        uint256 feeAmount = (amount * feePercent) / 100;
+
+        // Allocate fees
+        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR;
+        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR;
+        uint256 rewardFeeAmount = feeAmount - devFeeAmount - burnFeeAmount; // Remaining goes to rewards
+
+        // Transfer individual fees
+        super._transfer(sender, developerWallet, devFeeAmount); // Developer fee
+        super._transfer(sender, address(0), burnFeeAmount); // Burn fee
+
+        // Allocate rewards (not transferred but added to the pool)
+        totalRewards += rewardFeeAmount;
+
+        // Transfer the remaining amount to the recipient
+        uint256 transferAmount = amount - feeAmount;
+        super._transfer(sender, recipient, transferAmount);
     }
 
     // =======================
