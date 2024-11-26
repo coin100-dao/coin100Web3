@@ -357,14 +357,3 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit UpkeepPerformed(performData);
     }
 }
-
-this contract is built on polygon
-
-do we need public sale ? my question is how do we give this contract a value ? 
-so we need to track total market cap of top 100 coin as index which will contribute to its value
-but what about how to increae the token value ? 
-should we increase the liquidity pool precetnatge ? or not mint that much ?
-what does reward incentive look like in the code if we decided to go the liquidity pool route ? 
-what 's its code ? 
-is there an alternative approach to these numbers ? 
-
