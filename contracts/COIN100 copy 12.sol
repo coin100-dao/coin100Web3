@@ -17,6 +17,7 @@ import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/
 
 // Import Uniswap V2 Interfaces
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
 /**
  * @title COIN100 (C100) Token
