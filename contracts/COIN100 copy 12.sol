@@ -109,6 +109,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Initialize Uniswap V2 Router
         uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
+
+        // Create a Uniswap pair for this token
+        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
+            .createPair(address(this), uniswapV2Router.WETH());
+        
+        // Approve the router to spend tokens
+        _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
         
     }
 
