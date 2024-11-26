@@ -14,6 +14,9 @@ import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0
 // Import Chainlink Automation Contracts
 import { AutomationCompatibleInterface } from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 
+// Import Uniswap V2 Interfaces
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
 /**
  * @title COIN100 (C100) Token
  * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization.
@@ -67,6 +70,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Initial Market Cap for scaling (assumed initial top 100 market cap at deployment)
     uint256 public initialMarketCap = 3_800_000_000_000; // 3.8 Trillion USD
 
+    // Uniswap
+    IUniswapV2Router02 public uniswapV2Router;
+    address public uniswapV2Pair;
+
     /**
      * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
      * @param _developerWallet Address of the developer wallet.
@@ -100,6 +107,34 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
+
+        // Initialize Uniswap V2 Router
+        uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
+        
+        // Create a Uniswap pair for this token
+        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
+            .createPair(address(this), uniswapV2Router.WETH());
+        
+        // Approve the router to spend tokens
+        _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
+    }
+
+    // Function to add liquidity
+    function addInitialLiquidity(uint256 tokenAmount, uint256 maticAmount) external onlyOwner {
+        // Transfer tokens from the owner to the contract
+        _transfer(msg.sender, address(this), tokenAmount);
+        
+        // Add the liquidity
+        uniswapV2Router.addLiquidityETH{value: maticAmount}(
+            address(this),
+            tokenAmount,
+            0, // Slippage is unavoidable
+            0, // Slippage is unavoidable
+            owner(),
+            block.timestamp
+        );
+        
+        emit LiquidityAdded(tokenAmount, maticAmount);
     }
 
     // =======================
