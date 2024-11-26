@@ -14,6 +14,9 @@ import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0
 // Import Chainlink Automation Contracts
 import { AutomationCompatibleInterface } from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 
+// Import Uniswap V2 Interfaces
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+
 /**
  * @title COIN100 (C100) Token
  * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization.
@@ -34,6 +37,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestSent(bytes32 indexed requestId);
     event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
+    event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
 
     // =======================
     // ======= STATE =========
@@ -67,6 +71,19 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Initial Market Cap for scaling (assumed initial top 100 market cap at deployment)
     uint256 public initialMarketCap = 3_800_000_000_000; // 3.8 Trillion USD
 
+    // Public Sale Parameters
+    uint256 public saleStartTime;
+    uint256 public saleEndTime;
+    uint256 public tokenPrice; // Price in wei per C100 token
+    uint256 public tokensSold;
+
+    // Sale Allocation
+    uint256 public constant PUBLIC_SALE_ALLOCATION = (TOTAL_SUPPLY * 70) / 100;
+
+    // Uniswap
+    IUniswapV2Router02 public uniswapV2Router;
+    address public uniswapV2Pair;
+
     /**
      * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
      * @param _developerWallet Address of the developer wallet.
@@ -90,17 +107,24 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         subscriptionId = _subscriptionId;
 
         // Mint allocations
-        _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
+        _mint(msg.sender, (TOTAL_SUPPLY * 75) / 100); // 75% Public Sale
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
-        _mint(liquidityWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Liquidity
-        _mint(address(this), (TOTAL_SUPPLY * 10) / 100); // 10% Reserve
-
-        // Initial Burn of 10% Reserve
-        _burn(address(this), (TOTAL_SUPPLY * 10) / 100); // Burn 10% Reserve
+        _mint(liquidityWallet, (TOTAL_SUPPLY * 20) / 100); // 20% Liquidity
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
+
+        // Initialize Uniswap V2 Router
+        uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
+        
+        // Create a Uniswap pair for this token
+        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
+            .createPair(address(this), uniswapV2Router.WETH());
+        
+        // Approve the router to spend tokens
+        _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
     }
+
 
     // =======================
     // ====== ERC20 OVERRIDES ==
@@ -138,6 +162,49 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== FUNCTIONS =======
     // =======================
+
+    /**
+     * @dev Initializes the public sale parameters.
+     * @param _saleStartTime Timestamp when the sale starts.
+     * @param _saleEndTime Timestamp when the sale ends.
+     * @param _tokenPrice Price per C100 token in wei.
+     */
+    function initializePublicSale(
+        uint256 _saleStartTime,
+        uint256 _saleEndTime,
+        uint256 _tokenPrice
+    ) external onlyOwner {
+        require(_saleStartTime < _saleEndTime, "Invalid sale duration");
+        require(_saleStartTime > block.timestamp, "Sale start must be in the future");
+        saleStartTime = _saleStartTime;
+        saleEndTime = _saleEndTime;
+        tokenPrice = _tokenPrice;
+    }
+
+    /**
+     * @dev Allows users to purchase C100 tokens during the public sale.
+     */
+    function buyTokens() external payable nonReentrant whenNotPaused {
+        require(block.timestamp >= saleStartTime, "Sale has not started");
+        require(block.timestamp <= saleEndTime, "Sale has ended");
+        require(msg.value > 0, "Must send ETH to buy tokens");
+
+        uint256 tokensToBuy = (msg.value * 1e18) / tokenPrice; // Adjust decimals
+        require(tokensSold + tokensToBuy <= PUBLIC_SALE_ALLOCATION, "Not enough tokens left for sale");
+
+        tokensSold += tokensToBuy;
+        _transfer(owner(), msg.sender, tokensToBuy);
+
+        emit TokensPurchased(msg.sender, tokensToBuy, msg.value);
+    }
+
+    /**
+     * @dev Allows the owner to withdraw collected funds after the sale ends.
+     */
+    function withdrawFunds() external onlyOwner {
+        require(block.timestamp > saleEndTime, "Sale not yet ended");
+        payable(owner()).transfer(address(this).balance);
+    }
 
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
@@ -357,6 +424,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit UpkeepPerformed(performData);
     }
 }
+
 
 ## **Project Overview**
 
