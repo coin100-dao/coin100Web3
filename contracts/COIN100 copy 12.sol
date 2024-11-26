@@ -141,6 +141,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @param amount Amount of tokens being transferred.
     */
     function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
+        updateReward(sender);
+        updateReward(recipient);
+
         // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
             super._transfer(sender, recipient, amount);
@@ -159,8 +162,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
             // Allocate rewards
             totalRewards += rewardFeeAmount;
-            // Optionally, you can emit an event for reward allocation
-            // emit RewardsAllocated(sender, rewardFeeAmount);
 
             // Transfer remaining tokens to recipient
             super._transfer(sender, recipient, transferAmount);
@@ -358,28 +359,17 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * Users must hold LP tokens from the Uniswap pair to be eligible.
     */
     function claimRewards() external nonReentrant {
-        // Fetch user's LP token balance
-        uint256 userLPBalance = IERC20(uniswapV2Pair).balanceOf(msg.sender);
-        require(userLPBalance > 0, "No LP tokens held");
+        updateReward(msg.sender);
 
-        // Fetch total LP tokens
-        uint256 totalLP = IERC20(uniswapV2Pair).totalSupply();
-        require(totalLP > 0, "No liquidity in the pool");
+        uint256 reward = rewards[msg.sender];
+        require(reward > 0, "No rewards available");
 
-        // Calculate user's share (with 18 decimals precision)
-        uint256 userShare = (userLPBalance * 1e18) / totalLP;
+        rewards[msg.sender] = 0;
+        totalRewards -= reward;
 
-        // Calculate reward amount based on user's share
-        uint256 rewardAmount = (totalRewards * userShare) / 1e18;
-        require(rewardAmount > 0, "No rewards available");
+        _transfer(address(this), msg.sender, reward);
 
-        // Update the rewards pool
-        totalRewards -= rewardAmount;
-
-        // Transfer rewards to the user
-        _transfer(address(this), msg.sender, rewardAmount);
-
-        emit RewardsDistributed(msg.sender, rewardAmount);
+        emit RewardsDistributed(msg.sender, reward);
     }
 
     // =======================
