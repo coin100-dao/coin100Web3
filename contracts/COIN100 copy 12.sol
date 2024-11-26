@@ -88,10 +88,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     address public uniswapV2Pair;
 
     /**
-     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
-     * @param _developerWallet Address of the developer wallet.
-     * @param _subscriptionId Chainlink subscription ID.
-     */
+    * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
+    * @param _developerWallet Address of the developer wallet.
+    * @param _subscriptionId Chainlink subscription ID.
+    */
     constructor(
         address _developerWallet,
         uint64 _subscriptionId
@@ -110,6 +110,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
         _mint(address(this), (TOTAL_SUPPLY * 5) / 100); // 5% Rewards Pool
 
+        // Initialize totalRewards with the initial rewards pool
+        totalRewards += (TOTAL_SUPPLY * 5) / 100;
+
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
 
@@ -122,9 +125,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         
         // Approve the router to spend tokens
         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
-        
     }
-
 
     // =======================
     // ====== ERC20 OVERRIDES ==
