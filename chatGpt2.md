@@ -434,3 +434,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 this contract is built on polygon
 
 
+implement public sale where users could buy the token directly .... put a cap on that sale .. cap is amount of available tokens from 70%
+dont give me ffull contract code 
+give me only additions 
+if your modifying a function, give me full function code 
