@@ -117,12 +117,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         // Initialize Uniswap V2 Router
         uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
         
-        // Create a Uniswap pair for this token
-        uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
-            .createPair(address(this), uniswapV2Router.WETH());
-        
-        // Approve the router to spend tokens
-        _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
     }
 
 
@@ -162,49 +156,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== FUNCTIONS =======
     // =======================
-
-    /**
-     * @dev Initializes the public sale parameters.
-     * @param _saleStartTime Timestamp when the sale starts.
-     * @param _saleEndTime Timestamp when the sale ends.
-     * @param _tokenPrice Price per C100 token in wei.
-     */
-    function initializePublicSale(
-        uint256 _saleStartTime,
-        uint256 _saleEndTime,
-        uint256 _tokenPrice
-    ) external onlyOwner {
-        require(_saleStartTime < _saleEndTime, "Invalid sale duration");
-        require(_saleStartTime > block.timestamp, "Sale start must be in the future");
-        saleStartTime = _saleStartTime;
-        saleEndTime = _saleEndTime;
-        tokenPrice = _tokenPrice;
-    }
-
-    /**
-     * @dev Allows users to purchase C100 tokens during the public sale.
-     */
-    function buyTokens() external payable nonReentrant whenNotPaused {
-        require(block.timestamp >= saleStartTime, "Sale has not started");
-        require(block.timestamp <= saleEndTime, "Sale has ended");
-        require(msg.value > 0, "Must send ETH to buy tokens");
-
-        uint256 tokensToBuy = (msg.value * 1e18) / tokenPrice; // Adjust decimals
-        require(tokensSold + tokensToBuy <= PUBLIC_SALE_ALLOCATION, "Not enough tokens left for sale");
-
-        tokensSold += tokensToBuy;
-        _transfer(owner(), msg.sender, tokensToBuy);
-
-        emit TokensPurchased(msg.sender, tokensToBuy, msg.value);
-    }
-
-    /**
-     * @dev Allows the owner to withdraw collected funds after the sale ends.
-     */
-    function withdrawFunds() external onlyOwner {
-        require(block.timestamp > saleEndTime, "Sale not yet ended");
-        payable(owner()).transfer(address(this).balance);
-    }
 
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
