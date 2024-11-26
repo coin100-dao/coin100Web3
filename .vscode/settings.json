@@ -1,3 +1,5 @@
 {
-    "solidity.compileUsingRemoteVersion": "latest"
+    "solidity.compileUsingRemoteVersion": "latest",
+    "IDX.aI.enableInlineCompletion": true,
+    "IDX.aI.enableCodebaseIndexing": true
 }
