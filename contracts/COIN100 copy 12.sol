@@ -73,11 +73,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public tokenPrice; // Price in wei per C100 token
     uint256 public tokensSold;
 
-    // Reward Configuration
-    uint256 public liquidityRewardPercent = 1; // 1% of transaction fees allocated to rewards
-    uint256 public totalRewards; // Total accumulated rewards
-    mapping(address => uint256) public userRewards; // Rewards accumulated by each user
-
     uint256 public totalMarketCap; // Current total market cap in USD
 
     // Sale Allocation
@@ -86,6 +81,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Uniswap
     IUniswapV2Router02 public uniswapV2Router;
     address public uniswapV2Pair;
+
+    // Reward Tracking Variables
+    uint256 public rewardPerTokenStored;
+    uint256 public lastUpdateTime;
+    uint256 public rewardRate = 1000; // Example: 1000 C100 tokens distributed per rebase
+    mapping(address => uint256) public userRewardPerTokenPaid;
+    mapping(address => uint256) public rewards;
 
     /**
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
@@ -115,6 +117,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
+        lastUpdateTime = block.timestamp;
 
         // Initialize Uniswap V2 Router
         uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
@@ -167,35 +170,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== FUNCTIONS =======
     // =======================
-
-    /**
-    * @dev Allows liquidity providers to claim their accumulated rewards.
-    * Users must hold LP tokens from the Uniswap pair to be eligible.
-    */
-    function claimRewards() external nonReentrant {
-        // Fetch user's LP token balance
-        uint256 userLPBalance = IERC20(uniswapV2Pair).balanceOf(msg.sender);
-        require(userLPBalance > 0, "No LP tokens held");
-
-        // Fetch total LP tokens
-        uint256 totalLP = IERC20(uniswapV2Pair).totalSupply();
-        require(totalLP > 0, "No liquidity in the pool");
-
-        // Calculate user's share (with 18 decimals precision)
-        uint256 userShare = (userLPBalance * 1e18) / totalLP;
-
-        // Calculate reward amount based on user's share
-        uint256 rewardAmount = (totalRewards * userShare) / 1e18;
-        require(rewardAmount > 0, "No rewards available");
-
-        // Update the rewards pool
-        totalRewards -= rewardAmount;
-
-        // Transfer rewards to the user
-        _transfer(address(this), msg.sender, rewardAmount);
-
-        emit RewardsDistributed(msg.sender, rewardAmount);
-    }
 
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
@@ -314,13 +288,12 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     
     /**
-    * @dev Distributes a fixed percentage of tokens from the rewards pool to the totalRewards pool.
-    * This function should be called periodically to replenish rewards for LPs.
+    * @dev Distributes rewards by updating the rewardPerTokenStored and transferring tokens from the rewards pool.
     */
     function distributeRewards() internal {
-        // Define the distribution rate (e.g., 0.1% of TOTAL_SUPPLY per interval)
-        uint256 distributionRate = 1; // Represents 0.1%
-        uint256 distributionAmount = (TOTAL_SUPPLY * distributionRate) / 1000; // 1/1000 = 0.1%
+        updateReward(address(0)); // Update global rewards
+
+        uint256 distributionAmount = (TOTAL_SUPPLY * 1) / 1000; // 0.1% of TOTAL_SUPPLY per interval
 
         // Check the contract's token balance in the rewards pool
         uint256 contractBalance = balanceOf(address(this));
@@ -336,8 +309,77 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             // Update the totalRewards pool
             totalRewards += distributionAmount;
 
-            emit RewardsDistributed(address(this), distributionAmount);
+            // Optionally, transfer tokens to a staking pool or keep them in the contract
+            // For this one, we'll keep them in the contract
         }
+
+        emit RewardsDistributed(address(this), distributionAmount);
+    }
+
+    /**
+    * @dev Updates the reward variables to be up-to-date.
+    */
+    function updateReward(address account) internal {
+        rewardPerTokenStored = rewardPerToken();
+        lastUpdateTime = block.timestamp;
+        if (account != address(0)) {
+            rewards[account] = earned(account);
+            userRewardPerTokenPaid[account] = rewardPerTokenStored;
+        }
+    }
+
+    /**
+    * @dev Calculates the current reward per token.
+    * @return The updated reward per token.
+    */
+    function rewardPerToken() public view returns (uint256) {
+        if (IERC20(uniswapV2Pair).totalSupply() == 0) {
+            return rewardPerTokenStored;
+        }
+        return
+            rewardPerTokenStored +
+            (((block.timestamp - lastUpdateTime) * rewardRate * 1e18) / IERC20(uniswapV2Pair).totalSupply());
+    }
+
+    /**
+    * @dev Calculates the earned rewards for a user.
+    * @param account The address of the user.
+    * @return The amount of rewards earned.
+    */
+    function earned(address account) public view returns (uint256) {
+        return
+            ((IERC20(uniswapV2Pair).balanceOf(account) *
+                (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18) +
+            rewards[account];
+    }
+
+    /**
+    * @dev Allows liquidity providers to claim their accumulated rewards.
+    * Users must hold LP tokens from the Uniswap pair to be eligible.
+    */
+    function claimRewards() external nonReentrant {
+        // Fetch user's LP token balance
+        uint256 userLPBalance = IERC20(uniswapV2Pair).balanceOf(msg.sender);
+        require(userLPBalance > 0, "No LP tokens held");
+
+        // Fetch total LP tokens
+        uint256 totalLP = IERC20(uniswapV2Pair).totalSupply();
+        require(totalLP > 0, "No liquidity in the pool");
+
+        // Calculate user's share (with 18 decimals precision)
+        uint256 userShare = (userLPBalance * 1e18) / totalLP;
+
+        // Calculate reward amount based on user's share
+        uint256 rewardAmount = (totalRewards * userShare) / 1e18;
+        require(rewardAmount > 0, "No rewards available");
+
+        // Update the rewards pool
+        totalRewards -= rewardAmount;
+
+        // Transfer rewards to the user
+        _transfer(address(this), msg.sender, rewardAmount);
+
+        emit RewardsDistributed(msg.sender, rewardAmount);
     }
 
     // =======================
