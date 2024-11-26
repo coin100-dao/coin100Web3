@@ -40,7 +40,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestSent(bytes32 indexed requestId);
     event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
-    event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
     event RewardsDistributed(address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
 
@@ -49,19 +48,19 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     AggregatorV3Interface internal priceFeed;
 
+    // Transaction fee percentages (in basis points)
+    uint256 public feePercent = 3; // 3% total fee
+    uint256 public developerFee = 100;
+    uint256 public burnFee = 100;
+
+    uint256 public constant FEE_DIVISOR = 100;
+
     uint256 public constant INITIAL_PRICE = 1e16; // $0.01 with 18 decimals
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
-    uint256 public feePercent = 3; // 3% fee on transactions
     uint256 public constant SCALING_FACTOR = 380000;
 
     address public developerWallet;
-
-    // Transaction fee percentages (in basis points)
-    uint256 public developerFee = 100;
-    uint256 public burnFee = 100;
-    uint256 public liquidityRewardPercent = 100;
-    uint256 public constant FEE_DIVISOR = 10000;
 
     // Chainlink Functions Configuration
     address public constant FUNCTIONS_ROUTER_ADDRESS = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De; // Chainlink Functions Router Address on Polygon
@@ -74,16 +73,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public lastRebaseTime;
     uint256 public rebaseInterval = 24 hours;
 
-    // Public Sale Parameters
-    uint256 public saleStartTime;
-    uint256 public saleEndTime;
-    uint256 public tokenPrice; // Price in wei per C100 token
-    uint256 public tokensSold;
-
     uint256 public totalMarketCap; // Current total market cap in USD
-
-    // Sale Allocation
-    uint256 public constant PUBLIC_SALE_ALLOCATION = (TOTAL_SUPPLY * 70) / 100;
 
     // Uniswap
     IUniswapV2Router02 public uniswapV2Router;
