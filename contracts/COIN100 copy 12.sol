@@ -237,11 +237,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-     * @dev Callback function for Chainlink Functions to fulfill the request.
-     * @param requestId The request ID.
-     * @param response The response from the Chainlink Function.
-     * @param err The error, if any.
-     */
+    * @dev Callback function for Chainlink Functions to fulfill the request.
+    * @param requestId The request ID.
+    * @param response The response from the Chainlink Function.
+    * @param err The error, if any.
+    */
     function fulfillRequest(
         bytes32 requestId,
         bytes memory response,
