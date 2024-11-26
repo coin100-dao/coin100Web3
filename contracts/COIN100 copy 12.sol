@@ -344,14 +344,21 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Calculates the earned rewards for a user.
+    * This function accounts for the user's LP token holdings and the rewards accumulated over time.
     * @param account The address of the user.
-    * @return The amount of rewards earned.
+    * @return The amount of rewards earned by the user.
     */
     function earned(address account) public view returns (uint256) {
-        return
-            ((IERC20(uniswapV2Pair).balanceOf(account) *
-                (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18) +
-            rewards[account];
+        // Calculate the difference between the current reward per token and the user's last recorded reward per token
+        uint256 rewardDifference = rewardPerToken() - userRewardPerTokenPaid[account];
+
+        // Multiply the reward difference by the user's LP token balance
+        uint256 earnedRewards = (IERC20(uniswapV2Pair).balanceOf(account) * rewardDifference) / 1e18;
+
+        // Add any rewards already accumulated but not yet claimed
+        earnedRewards += rewards[account];
+
+        return earnedRewards;
     }
 
     /**
