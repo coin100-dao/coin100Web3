@@ -107,9 +107,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         subscriptionId = _subscriptionId;
 
         // Mint allocations
-        _mint(msg.sender, (TOTAL_SUPPLY * 75) / 100); // 75% Public Sale
+        _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
-        _mint(liquidityWallet, (TOTAL_SUPPLY * 20) / 100); // 20% Liquidity
+        _mint(liquidityWallet, (TOTAL_SUPPLY * 25) / 100); // 25% Liquidity
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
