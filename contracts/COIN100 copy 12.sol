@@ -173,9 +173,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * Users must hold LP tokens from the Uniswap pair to be eligible.
     */
     function claimRewards() external nonReentrant {
-        // Assuming LP tokens are held by the user, and the contract can track them.
-        // For simplicity, we'll distribute rewards based on the user's share of total liquidity.
-        
         // Fetch user's LP token balance
         uint256 userLPBalance = IERC20(uniswapV2Pair).balanceOf(msg.sender);
         require(userLPBalance > 0, "No LP tokens held");
@@ -184,10 +181,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 totalLP = IERC20(uniswapV2Pair).totalSupply();
         require(totalLP > 0, "No liquidity in the pool");
 
-        // Calculate user's share
+        // Calculate user's share (with 18 decimals precision)
         uint256 userShare = (userLPBalance * 1e18) / totalLP;
 
-        // Calculate reward amount
+        // Calculate reward amount based on user's share
         uint256 rewardAmount = (totalRewards * userShare) / 1e18;
         require(rewardAmount > 0, "No rewards available");
 
@@ -317,11 +314,30 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     
     /**
-    * @dev function to distribute rewards periodically.
-    * You can implement logic to distribute rewards based on specific criteria.
+    * @dev Distributes a fixed percentage of tokens from the rewards pool to the totalRewards pool.
+    * This function should be called periodically to replenish rewards for LPs.
     */
     function distributeRewards() internal {
-        // Example: Transfer a fixed amount to the rewards pool or distribute based on certain conditions
+        // Define the distribution rate (e.g., 0.1% of TOTAL_SUPPLY per interval)
+        uint256 distributionRate = 1; // Represents 0.1%
+        uint256 distributionAmount = (TOTAL_SUPPLY * distributionRate) / 1000; // 1/1000 = 0.1%
+
+        // Check the contract's token balance in the rewards pool
+        uint256 contractBalance = balanceOf(address(this));
+        uint256 availableForDistribution = contractBalance - totalRewards;
+
+        // Adjust the distributionAmount if not enough tokens are available
+        if (availableForDistribution < distributionAmount) {
+            distributionAmount = availableForDistribution;
+        }
+
+        // Ensure there is something to distribute
+        if (distributionAmount > 0) {
+            // Update the totalRewards pool
+            totalRewards += distributionAmount;
+
+            emit RewardsDistributed(address(this), distributionAmount);
+        }
     }
 
     // =======================
@@ -419,8 +435,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         lastRebaseTime = block.timestamp;
         requestMarketCapData();
 
-        // Optionally, distribute a portion of rewards periodically
-        // distributeRewards();
+        // distribute a portion of rewards periodically
+        distributeRewards();
 
         emit UpkeepPerformed(performData);
     }
