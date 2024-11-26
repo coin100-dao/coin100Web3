@@ -314,6 +314,15 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         return result;
     }
 
+    
+    /**
+    * @dev function to distribute rewards periodically.
+    * You can implement logic to distribute rewards based on specific criteria.
+    */
+    function distributeRewards() internal {
+        // Example: Transfer a fixed amount to the rewards pool or distribute based on certain conditions
+    }
+
     // =======================
     // ====== ADMIN ==========
     // =======================
@@ -415,11 +424,4 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit UpkeepPerformed(performData);
     }
 
-    /**
-    * @dev Optional function to distribute rewards periodically.
-    * You can implement logic to distribute rewards based on specific criteria.
-    */
-    function distributeRewards() internal {
-        // Example: Transfer a fixed amount to the rewards pool or distribute based on certain conditions
-    }
 }
