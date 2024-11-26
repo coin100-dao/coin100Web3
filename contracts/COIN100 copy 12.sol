@@ -42,6 +42,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
     event RewardsDistributed(address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
+    event RewardsReplenished(uint256 amount, uint256 timestamp);
 
     // =======================
     // ======= STATE =========
@@ -50,15 +51,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     // Transaction fee percentages (in basis points)
     uint256 public feePercent = 3; // 3% total fee
-    uint256 public developerFee = 100;
-    uint256 public burnFee = 100;
-
+    uint256 public developerFee = 50; // 50% of the feePercent (1.5%)
+    uint256 public burnFee = 50; // 50% of the feePercent (1.5%)
     uint256 public constant FEE_DIVISOR = 100;
 
-    uint256 public constant INITIAL_PRICE = 1e16; // $0.01 with 18 decimals
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
-    uint256 public constant SCALING_FACTOR = 380000;
+    uint256 public constant SCALING_FACTOR = 380000; // Scaling factor to determine target market cap (e.g., targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR)
 
     address public developerWallet;
 
@@ -157,19 +156,21 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         }
 
         // Calculate total fee
-        uint256 feeAmount = (amount * feePercent) / 100;
+        uint256 feeAmount = (amount * feePercent) / 100; // 3% of amount
 
-        // Allocate fees
-        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR;
-        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR;
-        uint256 rewardFeeAmount = feeAmount - devFeeAmount - burnFeeAmount; // Remaining goes to rewards
+        // Allocate fees based on adjusted percentages
+        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.5%
+        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR; // 1.5%
+        uint256 rewardFeeAmount = feeAmount - devFeeAmount - burnFeeAmount; // 0%
 
         // Transfer individual fees
         super._transfer(sender, developerWallet, devFeeAmount); // Developer fee
         super._transfer(sender, address(0), burnFeeAmount); // Burn fee
 
-        // Allocate rewards (not transferred but added to the pool)
-        totalRewards += rewardFeeAmount;
+        // Allocate rewards (if any)
+        if (rewardFeeAmount > 0) {
+            totalRewards += rewardFeeAmount;
+        }
 
         // Transfer the remaining amount to the recipient
         uint256 transferAmount = amount - feeAmount;
@@ -260,18 +261,22 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-     * @dev Adjusts the token supply based on the latest market cap data.
-     * @param fetchedMarketCap The latest total market cap in USD.
-     *
-     * Logic:
-     * - Calculate the desired total supply based on the fetched market cap.
-     * - Mint or burn tokens to match the desired supply.
-     * - Example: If market cap increases, mint tokens; if it decreases, burn tokens.
-     */
+    * @dev Adjusts the token supply based on the latest market cap data.
+    * @param fetchedMarketCap The latest total market cap in USD.
+    *
+    * Logic:
+    * - Calculate the desired total supply based on the fetched market cap and the current price.
+    * - Mint or burn tokens to match the desired supply.
+    */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
-        // Calculate the target C100 market cap based on scaling factor
+        // Fetch the current price of C100 in USD with 8 decimals
+        uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
+
+        // Calculate the current market cap based on the current price
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18;
+
+        // Calculate the target total supply based on the fetched market cap and scaling factor
         uint256 targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR;
-        uint256 currentC100MarketCap = (totalSupply() * INITIAL_PRICE) / 1e18; // Calculate current market cap
 
         // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
         uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
@@ -313,7 +318,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     
     /**
-    * @dev Distributes rewards by updating the rewardPerTokenStored and transferring tokens from the rewards pool.
+    * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
     */
     function distributeRewards() internal {
         updateReward(address(0)); // Update global rewards
@@ -337,9 +342,28 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (distributionAmount > 0) {
             // Update the totalRewards pool
             totalRewards += distributionAmount;
-        }
 
-        emit RewardsDistributed(address(this), distributionAmount);
+            // Emit the new event for replenishing rewards
+            emit RewardsReplenished(distributionAmount, block.timestamp);
+        }
+    }
+
+    /**
+    * @dev Allows liquidity providers to claim their accumulated rewards.
+    * Users must hold LP tokens from the Uniswap pair to be eligible.
+    */
+    function claimRewards() external nonReentrant {
+        updateReward(msg.sender);
+
+        uint256 reward = rewards[msg.sender];
+        require(reward > 0, "No rewards available");
+
+        rewards[msg.sender] = 0;
+        totalRewards -= reward;
+
+        _transfer(address(this), msg.sender, reward);
+
+        emit RewardsDistributed(msg.sender, reward); // Emitting the event with the correct user
     }
 
     /**
@@ -384,24 +408,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         earnedRewards += rewards[account];
 
         return earnedRewards;
-    }
-
-    /**
-    * @dev Allows liquidity providers to claim their accumulated rewards.
-    * Users must hold LP tokens from the Uniswap pair to be eligible.
-    */
-    function claimRewards() external nonReentrant {
-        updateReward(msg.sender);
-
-        uint256 reward = rewards[msg.sender];
-        require(reward > 0, "No rewards available");
-
-        rewards[msg.sender] = 0;
-        totalRewards -= reward;
-
-        _transfer(address(this), msg.sender, reward);
-
-        emit RewardsDistributed(msg.sender, reward);
     }
 
     /**
