@@ -38,7 +38,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
-    event RewardsDistributed(address indexed user, uint256 amount);
 
     // =======================
     // ======= STATE =========
@@ -75,11 +74,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public saleEndTime;
     uint256 public tokenPrice; // Price in wei per C100 token
     uint256 public tokensSold;
-
-    // Reward Configuration
-    uint256 public liquidityRewardPercent = 1; // 1% of transaction fees allocated to rewards
-    uint256 public totalRewards; // Total accumulated rewards
-    mapping(address => uint256) public userRewards; // Rewards accumulated by each user
 
     // Sale Allocation
     uint256 public constant PUBLIC_SALE_ALLOCATION = (TOTAL_SUPPLY * 70) / 100;
@@ -131,11 +125,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-    * @dev Overrides the ERC20 _transfer function to include fee logic and reward allocation.
-    * @param sender Address sending the tokens.
-    * @param recipient Address receiving the tokens.
-    * @param amount Amount of tokens being transferred.
-    */
+     * @dev Overrides the ERC20 _transfer function to include fee logic.
+     * @param sender Address sending the tokens.
+     * @param recipient Address receiving the tokens.
+     * @param amount Amount of tokens being transferred.
+     */
     function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
         // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
@@ -147,16 +141,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             // Calculate individual fees
             uint256 devFeeAmount = (amount * developerFee) / FEE_DIVISOR;
             uint256 burnFeeAmount = (amount * burnFee) / FEE_DIVISOR;
-            uint256 rewardFeeAmount = (amount * liquidityRewardPercent) / 100; // Allocate to rewards
 
             // Transfer fees to respective wallets
             super._transfer(sender, developerWallet, devFeeAmount); // 1% to Developer
             super._transfer(sender, address(0), burnFeeAmount); // 1% Burn
-
-            // Allocate rewards
-            totalRewards += rewardFeeAmount;
-            // Optionally, you can emit an event for reward allocation
-            // emit RewardsAllocated(sender, rewardFeeAmount);
 
             // Transfer remaining tokens to recipient
             super._transfer(sender, recipient, transferAmount);
