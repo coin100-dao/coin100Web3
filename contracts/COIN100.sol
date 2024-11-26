@@ -128,7 +128,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
      * @param recipient Address receiving the tokens.
      * @param amount Amount of tokens being transferred.
      */
-    function safeTransfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
+    function safeTransfer(address sender, address recipient, uint256 amount) internal whenNotPaused {
         // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
             super._transfer(sender, recipient, amount);
@@ -302,10 +302,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit WalletsUpdated(_developerWallet, _liquidityWallet);
     }
 
-    /**
-     * @dev Allows the owner to update the Chainlink subscription ID.
-     * @param _subscriptionId The new subscription ID.
-     */
+    // /**
+    //  * @dev Allows the owner to update the Chainlink subscription ID.
+    //  * @param _subscriptionId The new subscription ID.
+    //  */
     function updateSubscriptionId(uint64 _subscriptionId_) external onlyOwner {
         subscriptionId = _subscriptionId_;
     }
@@ -342,14 +342,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // ====== AUTOMATION ======
     // =======================
 
-    /**
-     * @dev Chainlink Automation checkUpkeep function.
-     * This function is called by Chainlink nodes to check if upkeep is needed.
-     * It returns true if the rebase interval has passed.
-     * @param checkData Not used in this implementation.
-     * @return upkeepNeeded Whether upkeep is needed.
-     * @return performData Empty bytes.
-     */
+    // /**
+    //  * @dev Chainlink Automation checkUpkeep function.
+    //  * This function is called by Chainlink nodes to check if upkeep is needed.
+    //  * It returns true if the rebase interval has passed.
+    //  * @param checkData Not used in this implementation.
+    //  * @return upkeepNeeded Whether upkeep is needed.
+    //  * @return performData Empty bytes.
+    //  */
     function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
         upkeepNeeded = block.timestamp >= lastRebaseTime + rebaseInterval;
         // performData can be empty as we don't need to pass any specific data
