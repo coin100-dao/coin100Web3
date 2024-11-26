@@ -13,6 +13,7 @@ import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0
 
 // Import Chainlink Automation Contracts
 import { AutomationCompatibleInterface } from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
+import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 // Import Uniswap V2 Interfaces
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
@@ -39,10 +40,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
     event RewardsDistributed(address indexed user, uint256 amount);
+    event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
 
     // =======================
     // ======= STATE =========
     // =======================
+    AggregatorV3Interface internal priceFeed;
+
     uint256 public constant INITIAL_PRICE = 1e16; // $0.01 with 18 decimals
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
@@ -54,6 +58,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Transaction fee percentages (in basis points)
     uint256 public developerFee = 100;
     uint256 public burnFee = 100;
+    uint256 public liquidityRewardPercent = 100;
     uint256 public constant FEE_DIVISOR = 10000;
 
     // Chainlink Functions Configuration
@@ -65,7 +70,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     // Chainlink Automation Configuration
     uint256 public lastRebaseTime;
-    uint256 public rebaseInterval = 1 hours;
+    uint256 public rebaseInterval = 24 hours;
 
     // Public Sale Parameters
     uint256 public saleStartTime;
@@ -86,6 +91,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public rewardPerTokenStored;
     uint256 public lastUpdateTime;
     uint256 public rewardRate = 1000; // Example: 1000 C100 tokens distributed per rebase
+    uint256 public totalRewards;
+    uint256 public constant MAX_REWARD_RATE = 2000; // Upper limit
+    uint256 public constant MIN_REWARD_RATE = 500;  // Lower limit
+
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
@@ -93,10 +102,12 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
+    * @param _priceFeedAddress Address of the Chainlink Price Feed for C100/USD.
     */
     constructor(
         address _developerWallet,
-        uint64 _subscriptionId
+        uint64 _subscriptionId,
+        address _priceFeedAddress
     )
         ERC20("COIN100", "C100")
         Ownable()
@@ -115,7 +126,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         // Initialize totalRewards with the initial rewards pool
         totalRewards += (TOTAL_SUPPLY * 5) / 100;
 
-        // Initialize rebasing timestamp
+        // Initialize rebasing and reward tracking timestamps
         lastRebaseTime = block.timestamp;
         lastUpdateTime = block.timestamp;
 
@@ -128,6 +139,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         
         // Approve the router to spend tokens
         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
+
+        // Initialize Chainlink Price Feed (Assuming you have a price feed set up)
+        priceFeed = AggregatorV3Interface(_priceFeedAddress);
     }
 
     // =======================
@@ -171,6 +185,22 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== FUNCTIONS =======
     // =======================
+
+    /**
+    * @dev Retrieves the latest price of C100 in USD with 8 decimals.
+    * @return price The latest price.
+    */
+    function getLatestPrice() public view returns (uint256 price) {
+        (
+            , 
+            int256 answer,
+            ,
+            ,
+            
+        ) = priceFeed.latestRoundData();
+        require(answer > 0, "Invalid price data");
+        price = uint256(answer);
+    }
 
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
@@ -294,7 +324,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     function distributeRewards() internal {
         updateReward(address(0)); // Update global rewards
 
-        uint256 distributionAmount = (TOTAL_SUPPLY * 1) / 1000; // 0.1% of TOTAL_SUPPLY per interval
+        // Adjust the reward rate based on the current token price
+        adjustRewardRate();
+
+        // Calculate the distribution amount based on the new reward rate and rebaseInterval
+        uint256 distributionAmount = rewardRate * rebaseInterval; // tokens per second * seconds = tokens
 
         // Check the contract's token balance in the rewards pool
         uint256 contractBalance = balanceOf(address(this));
@@ -309,9 +343,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (distributionAmount > 0) {
             // Update the totalRewards pool
             totalRewards += distributionAmount;
-
-            // Optionally, transfer tokens to a staking pool or keep them in the contract
-            // For this one, we'll keep them in the contract
         }
 
         emit RewardsDistributed(address(this), distributionAmount);
@@ -379,6 +410,37 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit RewardsDistributed(msg.sender, reward);
     }
 
+    /**
+    * @dev Adjusts the reward rate based on the current token price.
+    * Lower reward rate when the token price increases and vice versa.
+    */
+    function adjustRewardRate() internal {
+        uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
+        uint256 newRewardRate;
+        
+        if (currentPrice < 1 * 1e8) { // Below $1
+            newRewardRate = 2000; // Highest rewards
+        } else if (currentPrice >= 1 * 1e8 && currentPrice < 5 * 1e8) { // $1 - $5
+            newRewardRate = 1500;
+        } else if (currentPrice >= 5 * 1e8 && currentPrice < 10 * 1e8) { // $5 - $10
+            newRewardRate = 1000;
+        } else { // $10 and above
+            newRewardRate = 500; // Lowest rewards
+        }
+        
+        // Apply bounds to prevent extreme rates
+        if (newRewardRate > MAX_REWARD_RATE) {
+            newRewardRate = MAX_REWARD_RATE;
+        } else if (newRewardRate < MIN_REWARD_RATE) {
+            newRewardRate = MIN_REWARD_RATE;
+        }
+        
+        // Update the rewardRate
+        rewardRate = newRewardRate;
+        
+        emit RewardRateUpdated(newRewardRate, currentPrice);
+    }
+
     // =======================
     // ====== ADMIN ==========
     // =======================
@@ -405,20 +467,23 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit WalletsUpdated(_developerWallet);
     }
 
-    /**
-     * @dev Allows the owner to update the Chainlink subscription ID.
-     * @param _subscriptionId The new subscription ID.
-     */
+    // /**
+    //  * @dev Allows the owner to update the Chainlink subscription ID.
+    //  * @param _subscriptionId The new subscription ID.
+    //  */
     function updateSubscriptionId(uint64 _subscriptionId_) external onlyOwner {
         subscriptionId = _subscriptionId_;
     }
 
     /**
-     * @dev Allows the owner to update the rebase interval.
-     * @param _newInterval The new interval in seconds.
-     */
+    * @dev Allows the owner to update the rebase interval.
+    *      Ensures that the new interval is within acceptable bounds to prevent abuse.
+    * @param _newInterval The new interval in seconds. Must be at least 1 hour and no more than 7 days.
+    */
     function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
         require(_newInterval >= 1 hours, "Interval too short");
+        require(_newInterval <= 30 days, "Interval too long");
+
         rebaseInterval = _newInterval;
         emit RebaseIntervalUpdated(_newInterval);
     }
