@@ -367,4 +367,6 @@ should we increase the liquidity pool precetnatge ? or not mint that much ?
 what does reward incentive look like in the code if we decided to go the liquidity pool route ? 
 what 's its code ? 
 is there an alternative approach to these numbers ? 
-
+need a genius logic with genius numbers and a genius plan 
+remember we will start with $100 in liquidity at price of 0.01 
+people should have no issues finding and buying this token so consider the supply 
