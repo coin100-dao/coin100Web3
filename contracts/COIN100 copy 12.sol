@@ -467,7 +467,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         lastRebaseTime = block.timestamp;
         requestMarketCapData();
 
-        // distribute a portion of rewards periodically
+        // Distribute rewards to ensure the rewards pool is replenished
         distributeRewards();
 
         emit UpkeepPerformed(performData);
