@@ -38,6 +38,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
     event TokensPurchased(address indexed buyer, uint256 amount, uint256 cost);
+    event RewardsDistributed(address indexed user, uint256 amount);
 
     // =======================
     // ======= STATE =========
@@ -75,6 +76,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public tokenPrice; // Price in wei per C100 token
     uint256 public tokensSold;
 
+    // Reward Configuration
+    uint256 public liquidityRewardPercent = 1; // 1% of transaction fees allocated to rewards
+    uint256 public totalRewards; // Total accumulated rewards
+    mapping(address => uint256) public userRewards; // Rewards accumulated by each user
+
     // Sale Allocation
     uint256 public constant PUBLIC_SALE_ALLOCATION = (TOTAL_SUPPLY * 70) / 100;
 
@@ -103,6 +109,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         // Mint allocations
         _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
+        _mint(address(this), (TOTAL_SUPPLY * 5) / 100); // 5% Rewards Pool
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
@@ -125,11 +132,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-     * @dev Overrides the ERC20 _transfer function to include fee logic.
-     * @param sender Address sending the tokens.
-     * @param recipient Address receiving the tokens.
-     * @param amount Amount of tokens being transferred.
-     */
+    * @dev Overrides the ERC20 _transfer function to include fee logic and reward allocation.
+    * @param sender Address sending the tokens.
+    * @param recipient Address receiving the tokens.
+    * @param amount Amount of tokens being transferred.
+    */
     function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
         // If sender or recipient is the owner, transfer without fees
         if (sender == owner() || recipient == owner()) {
@@ -141,10 +148,16 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             // Calculate individual fees
             uint256 devFeeAmount = (amount * developerFee) / FEE_DIVISOR;
             uint256 burnFeeAmount = (amount * burnFee) / FEE_DIVISOR;
+            uint256 rewardFeeAmount = (amount * liquidityRewardPercent) / 100; // Allocate to rewards
 
             // Transfer fees to respective wallets
             super._transfer(sender, developerWallet, devFeeAmount); // 1% to Developer
             super._transfer(sender, address(0), burnFeeAmount); // 1% Burn
+
+            // Allocate rewards
+            totalRewards += rewardFeeAmount;
+            // Optionally, you can emit an event for reward allocation
+            // emit RewardsAllocated(sender, rewardFeeAmount);
 
             // Transfer remaining tokens to recipient
             super._transfer(sender, recipient, transferAmount);
@@ -154,6 +167,38 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== FUNCTIONS =======
     // =======================
+
+    /**
+    * @dev Allows liquidity providers to claim their accumulated rewards.
+    * Users must hold LP tokens from the Uniswap pair to be eligible.
+    */
+    function claimRewards() external nonReentrant {
+        // Assuming LP tokens are held by the user, and the contract can track them.
+        // For simplicity, we'll distribute rewards based on the user's share of total liquidity.
+        
+        // Fetch user's LP token balance
+        uint256 userLPBalance = IERC20(uniswapV2Pair).balanceOf(msg.sender);
+        require(userLPBalance > 0, "No LP tokens held");
+
+        // Fetch total LP tokens
+        uint256 totalLP = IERC20(uniswapV2Pair).totalSupply();
+        require(totalLP > 0, "No liquidity in the pool");
+
+        // Calculate user's share
+        uint256 userShare = (userLPBalance * 1e18) / totalLP;
+
+        // Calculate reward amount
+        uint256 rewardAmount = (totalRewards * userShare) / 1e18;
+        require(rewardAmount > 0, "No rewards available");
+
+        // Update the rewards pool
+        totalRewards -= rewardAmount;
+
+        // Transfer rewards to the user
+        _transfer(address(this), msg.sender, rewardAmount);
+
+        emit RewardsDistributed(msg.sender, rewardAmount);
+    }
 
     /**
      * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
@@ -351,11 +396,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-     * @dev Chainlink Automation performUpkeep function.
-     * This function is called by Chainlink nodes when checkUpkeep returns true.
-     * It performs the upkeep by requesting new market cap data.
-     * @param performData Not used in this implementation.
-     */
+    * @dev Chainlink Automation performUpkeep function.
+    * This function is called by Chainlink nodes when checkUpkeep returns true.
+    * It performs the upkeep by requesting new market cap data and distributing rewards.
+    * @param performData Not used in this implementation.
+    */
     function performUpkeep(bytes calldata performData) external override {
         // Check again to prevent multiple executions
         if ((block.timestamp - lastRebaseTime) < rebaseInterval) {
@@ -365,6 +410,17 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         lastRebaseTime = block.timestamp;
         requestMarketCapData();
 
+        // Optionally, distribute a portion of rewards periodically
+        // distributeRewards();
+
         emit UpkeepPerformed(performData);
+    }
+
+    /**
+    * @dev Optional function to distribute rewards periodically.
+    * You can implement logic to distribute rewards based on specific criteria.
+    */
+    function distributeRewards() internal {
+        // Example: Transfer a fixed amount to the rewards pool or distribute based on certain conditions
     }
 }
