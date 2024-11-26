@@ -2,9 +2,9 @@
 pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts@4.8.0/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts@4.8.0/security/Pausable.sol";
+import "@openzeppelin/contracts@4.8.0/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 // Import Chainlink Functions Contracts
@@ -518,11 +518,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
      * @dev Chainlink Automation checkUpkeep function.
      * This function is called by Chainlink nodes to check if upkeep is needed.
      * It returns true if the rebase interval has passed.
-     * @param checkData Not used in this implementation.
      * @return upkeepNeeded Whether upkeep is needed.
      * @return performData Empty bytes.
      */
-    function checkUpkeep(bytes calldata checkData) external view override returns (bool upkeepNeeded, bytes memory performData) {
+    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
         upkeepNeeded = (block.timestamp - lastRebaseTime) >= rebaseInterval;
         // performData can be empty as we don't need to pass any specific data
         performData = "";
