@@ -67,9 +67,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public lastRebaseTime;
     uint256 public rebaseInterval = 1 hours;
 
-    // Initial Market Cap for scaling (assumed initial top 100 market cap at deployment)
-    uint256 public initialMarketCap = 3_800_000_000_000; // 3.8 Trillion USD
-
     // Public Sale Parameters
     uint256 public saleStartTime;
     uint256 public saleEndTime;
@@ -80,6 +77,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public liquidityRewardPercent = 1; // 1% of transaction fees allocated to rewards
     uint256 public totalRewards; // Total accumulated rewards
     mapping(address => uint256) public userRewards; // Rewards accumulated by each user
+
+    uint256 public totalMarketCap; // Current total market cap in USD
 
     // Sale Allocation
     uint256 public constant PUBLIC_SALE_ALLOCATION = (TOTAL_SUPPLY * 70) / 100;
