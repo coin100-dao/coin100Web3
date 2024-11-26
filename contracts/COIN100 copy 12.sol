@@ -30,8 +30,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event PriceAdjusted(uint256 newMarketCap, uint256 timestamp);
     event TokensBurned(uint256 amount);
     event TokensMinted(uint256 amount);
-    event FeesUpdated(uint256 developerFee, uint256 liquidityFee, uint256 burnFee);
-    event WalletsUpdated(address developerWallet, address liquidityWallet);
+    event FeesUpdated(uint256 developerFee, uint256 burnFee);
+    event WalletsUpdated(address developerWallet);
     event RebaseIntervalUpdated(uint256 newInterval);
     event UpkeepPerformed(bytes performData);
     event FunctionsRequestSent(bytes32 indexed requestId);
@@ -49,12 +49,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public constant SCALING_FACTOR = 380000;
 
     address public developerWallet;
-    address public liquidityWallet;
 
     // Transaction fee percentages (in basis points)
-    uint256 public developerFee = 100; // 1%
-    uint256 public liquidityFee = 100; // 1%
-    uint256 public burnFee = 100; // 1%
+    uint256 public developerFee = 100;
+    uint256 public burnFee = 100;
     uint256 public constant FEE_DIVISOR = 10000;
 
     // Chainlink Functions Configuration
@@ -87,12 +85,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     /**
      * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
      * @param _developerWallet Address of the developer wallet.
-     * @param _liquidityWallet Address of the liquidity wallet.
      * @param _subscriptionId Chainlink subscription ID.
      */
     constructor(
         address _developerWallet,
-        address _liquidityWallet,
         uint64 _subscriptionId
     )
         ERC20("COIN100", "C100")
@@ -100,16 +96,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
     {
         require(_developerWallet != address(0), "Invalid developer wallet");
-        require(_liquidityWallet != address(0), "Invalid liquidity wallet");
 
         developerWallet = _developerWallet;
-        liquidityWallet = _liquidityWallet;
         subscriptionId = _subscriptionId;
 
         // Mint allocations
         _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
-        _mint(liquidityWallet, (TOTAL_SUPPLY * 25) / 100); // 25% Liquidity
 
         // Initialize rebasing timestamp
         lastRebaseTime = block.timestamp;
@@ -140,12 +133,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
             // Calculate individual fees
             uint256 devFeeAmount = (amount * developerFee) / FEE_DIVISOR;
-            uint256 liqFeeAmount = (amount * liquidityFee) / FEE_DIVISOR;
             uint256 burnFeeAmount = (amount * burnFee) / FEE_DIVISOR;
 
             // Transfer fees to respective wallets
             super._transfer(sender, developerWallet, devFeeAmount); // 1% to Developer
-            super._transfer(sender, liquidityWallet, liqFeeAmount); // 1% to Liquidity
             super._transfer(sender, address(0), burnFeeAmount); // 1% Burn
 
             // Transfer remaining tokens to recipient
@@ -279,28 +270,23 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     /**
      * @dev Allows the owner to update transaction fees.
      * @param _developerFee New developer fee in basis points.
-     * @param _liquidityFee New liquidity fee in basis points.
      * @param _burnFee New burn fee in basis points.
      */
-    function updateFees(uint256 _developerFee, uint256 _liquidityFee, uint256 _burnFee) external onlyOwner {
-        require(_developerFee + _liquidityFee + _burnFee <= 300, "Total fees cannot exceed 3%");
+    function updateFees(uint256 _developerFee, uint256 _burnFee) external onlyOwner {
+        require(_developerFee + _burnFee <= 300, "Total fees cannot exceed 3%");
         developerFee = _developerFee;
-        liquidityFee = _liquidityFee;
         burnFee = _burnFee;
-        emit FeesUpdated(_developerFee, _liquidityFee, _burnFee);
+        emit FeesUpdated(_developerFee, _burnFee);
     }
 
     /**
      * @dev Allows the owner to update wallet addresses for fee collection.
      * @param _developerWallet New developer wallet address.
-     * @param _liquidityWallet New liquidity wallet address.
      */
-    function updateWallets(address _developerWallet, address _liquidityWallet) external onlyOwner {
+    function updateWallets(address _developerWallet) external onlyOwner {
         require(_developerWallet != address(0), "Invalid developer wallet address");
-        require(_liquidityWallet != address(0), "Invalid liquidity wallet address");
         developerWallet = _developerWallet;
-        liquidityWallet = _liquidityWallet;
-        emit WalletsUpdated(_developerWallet, _liquidityWallet);
+        emit WalletsUpdated(_developerWallet);
     }
 
     /**
