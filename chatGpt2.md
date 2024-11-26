@@ -433,7 +433,3 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 **Ultimate Goal:** Dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
 this contract is built on polygon
 
-but first thing you'll do is answer this question 
-does this line make sense ?         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY); ?? not sure if this is the logic we need but oyu know better 
-
-lets make the uniswap have access to only available supply 
