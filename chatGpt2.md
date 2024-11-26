@@ -358,6 +358,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 }
 
+## **Project Overview**
+
+**COIN100** aims to provide a diversified investment vehicle by representing the top 100 cryptocurrencies by market capitalization. Inspired by traditional index funds like the S\&P 500, COIN100 offers both novice and experienced investors a secure, transparent, and efficient way to invest in the overall crypto market.
+
+**Ultimate Goal:** Dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
 this contract is built on polygon
 
 we need to provide staking rewards logic on liquidity to incentivse users
