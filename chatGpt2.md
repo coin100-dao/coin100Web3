@@ -439,3 +439,5 @@ how would people buy the token ?
 how would they stake it ? 
 when they buy, where is the buying coming out from ? public sale or liquidity pool ? and how ? 
 not sure i understand the full logic here ... i feel like we're missing somthing 
+but first thing you'll do is answer this question 
+does this line make sense ?         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY); ?? not sure if this is the logic we need but oyu know better 
