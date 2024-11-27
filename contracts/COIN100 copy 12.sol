@@ -101,14 +101,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
-    * @param _uniswapRouterAddress Address of the Uniswap V2 router.
+    * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
     * @param _functionsRouterAddress Address of the Chainlink Functions Router.
     * @param _donId DON ID for Chainlink Functions.
     */
     constructor(
         address _developerWallet,
         uint64 _subscriptionId,
-        address _uniswapRouterAddress,
+        address _quickswapUniswapRouterAddress,
         address _functionsRouterAddress,
         bytes32 _donId
     )
@@ -117,7 +117,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         FunctionsClient(_functionsRouterAddress) // Initialize FunctionsClient with dynamic address
     {
         require(_developerWallet != address(0), "Invalid developer wallet");
-        require(_uniswapRouterAddress != address(0), "Invalid Uniswap router address");
+        require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
         require(_functionsRouterAddress != address(0), "Invalid Functions router address");
         require(_donId != bytes32(0), "Invalid DON ID");
 
@@ -141,7 +141,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         lastUpdateTime = block.timestamp;
 
         // Initialize Uniswap V2 Router
-        uniswapV2Router = IUniswapV2Router02(_uniswapRouterAddress);
+        uniswapV2Router = IUniswapV2Router02(_quickswapUniswapRouterAddress);
 
         // Create a Uniswap pair for this token
         // Replace uniswapV2Router.WETH() with WMATIC address if necessary
