@@ -45,11 +45,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event RewardFeeUpdated(uint256 newRewardFee);
     event RewardsReplenished(uint256 amount, uint256 timestamp);
     event ScalingFactorUpdated(uint256 newScalingFactor);
+    event PriceFeedUpdated(address newPriceFeed);
 
     // =======================
     // ======= STATE =========
     // =======================
     AggregatorV3Interface internal priceFeed;
+    bool public useDirectPriceFeed = false; // false: use Uniswap + MATIC/USD; true: use direct C100/USD
 
     // Transaction fee percentages (in basis points)
     uint256 public feePercent = 3; // 3% total fee
@@ -99,12 +101,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
-    * @param _priceFeedAddress Address of the Chainlink Price Feed for C100/USD.
+    * @param _uniswapRouterAddress Address of the Uniswap V2 router.
     */
     constructor(
         address _developerWallet,
         uint64 _subscriptionId,
-        address _priceFeedAddress,
         address _uniswapRouterAddress
     )
         ERC20("COIN100", "C100")
@@ -133,16 +134,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uniswapV2Router = IUniswapV2Router02(_uniswapRouterAddress);
 
         // Create a Uniswap pair for this token
+        // Replace uniswapV2Router.WETH() with WMATIC address if necessary
         uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
-            .createPair(address(this), uniswapV2Router.WETH());
+            .createPair(address(this), uniswapV2Router.WETH()); // Ensure WETH is actually WMATIC on Polygon
 
         require(uniswapV2Pair != address(0), "Failed to create Uniswap pair");
 
         // Approve the router to spend tokens
         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
-
-        // Initialize Chainlink Price Feed (Assuming you have a price feed set up)
-        priceFeed = AggregatorV3Interface(_priceFeedAddress);
     }
 
     // =======================
@@ -193,19 +192,55 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-    * @dev Retrieves the latest price of C100 in USD with 8 decimals.
-    * @return price The latest price.
+    * @dev Retrieves the latest price of C100 in USD.
+    * If useDirectPriceFeed is true, it uses the direct C100/USD price feed.
+    * Otherwise, it derives the price using Uniswap C100/MATIC reserves and the MATIC/USD price feed.
+    * @return price The latest C100 price in USD with 8 decimals.
     */
     function getLatestPrice() public view returns (uint256 price) {
-        (
-            , 
-            int256 answer,
-            ,
-            ,
-            
-        ) = priceFeed.latestRoundData();
-        require(answer > 0, "Invalid price data");
-        price = uint256(answer);
+        require(address(priceFeed) != address(0), "Price feed not set");
+
+        if (useDirectPriceFeed) {
+            // Direct C100/USD price feed
+            (, int256 c100Price, , , ) = priceFeed.latestRoundData();
+            require(c100Price > 0, "Invalid C100 price data");
+            price = uint256(c100Price); // Assuming 8 decimals
+        } else {
+            // Derive C100/USD price using Uniswap C100/MATIC and Chainlink MATIC/USD
+
+            // Get MATIC/USD price from Chainlink
+            (, int256 maticPrice, , , ) = priceFeed.latestRoundData();
+            require(maticPrice > 0, "Invalid MATIC price data");
+            uint256 maticPriceUSD = uint256(maticPrice); // Assuming 8 decimals
+
+            // Get reserves from Uniswap pair
+            (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(uniswapV2Pair).getReserves();
+            address token0 = IUniswapV2Pair(uniswapV2Pair).token0();
+
+            uint112 reserveC100;
+            uint112 reserveMATIC;
+
+            if (token0 == address(this)) {
+                reserveC100 = reserve0;
+                reserveMATIC = reserve1;
+            } else {
+                reserveC100 = reserve1;
+                reserveMATIC = reserve0;
+            }
+
+            require(reserveC100 > 0 && reserveMATIC > 0, "Uniswap reserves not available");
+
+            // Calculate C100/MATIC price (MATIC per C100)
+            // reserveMATIC / reserveC100
+            // To maintain precision, multiply by 1e18
+            uint256 c100PerMATIC = (uint256(reserveMATIC) * 1e18) / uint256(reserveC100);
+
+            // Calculate C100/USD price
+            // C100/USD = C100/MATIC * MATIC/USD
+            // (1e18 / 1e18) * (1e8) = 1e8
+            // So final price has 8 decimals
+            price = (c100PerMATIC * maticPriceUSD) / 1e18;
+        }
     }
 
     /**
@@ -354,6 +389,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             totalRewards -= distributionAmount; // Deduct from totalRewards
             lastUpdateTime = block.timestamp;
             emit RewardsReplenished(distributionAmount, block.timestamp);
+            
+            // Optionally transfer rewards to a specific rewards pool or leave it in the contract for users to claim
+            // Example: _transfer(address(this), rewardsPool, distributionAmount);
         }
     }
 
@@ -448,6 +486,18 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== ADMIN ==========
     // =======================
+
+    /**
+    * @dev Allows the owner to set the Chainlink price feed address and specify its type.
+    * @param _priceFeedAddress The address of the price feed.
+    * @param _isDirectUSDFeed If true, the price feed is assumed to be C100/USD. If false, it's MATIC/USD.
+    */
+    function setPriceFeed(address _priceFeedAddress, bool _isDirectUSDFeed) external onlyOwner {
+        require(_priceFeedAddress != address(0), "Invalid price feed address");
+        priceFeed = AggregatorV3Interface(_priceFeedAddress);
+        useDirectPriceFeed = _isDirectUSDFeed;
+        emit PriceFeedUpdated(_priceFeedAddress);
+    }
 
     /**
     * @dev Allows the owner to update transaction fees.
@@ -565,9 +615,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
 }
-
-
-
 
 
 idea of contract
