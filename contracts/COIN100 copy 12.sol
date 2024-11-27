@@ -307,14 +307,19 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-     * @dev Parses a string to a uint256. Assumes the string is a valid number.
-     * @param _a The string to parse.
-     * @return _parsed The parsed uint256.
-     */
+    * @dev Parses a string to a uint256. Supports integers and decimals by truncating after the decimal point.
+    * @param _a The string to parse.
+    * @return _parsed The parsed uint256.
+    */
     function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
         bytes memory bresult = bytes(_a);
         uint256 result = 0;
+        bool decimalPointEncountered = false;
         for (uint256 i = 0; i < bresult.length; i++) {
+            if (bresult[i] == ".") {
+                decimalPointEncountered = true;
+                break; // Stop parsing at decimal point
+            }
             if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
                 result = result * 10 + (uint8(bresult[i]) - 48);
             }
