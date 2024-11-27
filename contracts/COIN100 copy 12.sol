@@ -81,10 +81,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Reward Tracking Variables
     uint256 public rewardPerTokenStored;
     uint256 public lastUpdateTime;
-    uint256 public rewardRate = 1000; // Example: 1000 C100 tokens distributed per rebase
+    uint256 public rewardRate = 10; // Example: 10 C100 tokens distributed per rebase
     uint256 public totalRewards;
-    uint256 public constant MAX_REWARD_RATE = 2000; // Upper limit
-    uint256 public constant MIN_REWARD_RATE = 500;  // Lower limit
+    uint256 public constant MAX_REWARD_RATE = 20; // Upper limit
+    uint256 public constant MIN_REWARD_RATE = 5;  // Lower limit
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
@@ -419,13 +419,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 newRewardRate;
         
         if (currentPrice < 1 * 1e8) { // Below $1
-            newRewardRate = 2000; // Highest rewards
+            newRewardRate = 20; // Highest rewards
         } else if (currentPrice >= 1 * 1e8 && currentPrice < 5 * 1e8) { // $1 - $5
-            newRewardRate = 1500;
+            newRewardRate = 15;
         } else if (currentPrice >= 5 * 1e8 && currentPrice < 10 * 1e8) { // $5 - $10
-            newRewardRate = 1000;
+            newRewardRate = 10;
         } else { // $10 and above
-            newRewardRate = 500; // Lowest rewards
+            newRewardRate = 5; // Lowest rewards
         }
         
         // Apply bounds to prevent extreme rates
@@ -435,10 +435,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             newRewardRate = MIN_REWARD_RATE;
         }
         
-        // Update the rewardRate
-        rewardRate = newRewardRate;
-        
-        emit RewardRateUpdated(newRewardRate, currentPrice);
+        // Update the rewardRate only if it has changed
+        if (newRewardRate != rewardRate) {
+            rewardRate = newRewardRate;
+            emit RewardRateUpdated(newRewardRate, currentPrice);
+        }
     }
 
     // =======================
