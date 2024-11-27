@@ -99,6 +99,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
+    * @param _priceFeedAddress Address of the price feed.
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
     * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
@@ -106,15 +107,16 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @param _donId DON ID for Chainlink Functions.
     */
     constructor(
+        address _priceFeedAddress,
+        address _quickswapUniswapRouterAddress, 
         address _developerWallet,
         uint64 _subscriptionId,
-        address _quickswapUniswapRouterAddress,
         address _functionsRouterAddress,
         bytes32 _donId
     )
         ERC20("COIN100", "C100")
         Ownable()
-        FunctionsClient(_functionsRouterAddress) // Initialize FunctionsClient with dynamic address
+        FunctionsClient(_functionsRouterAddress)
     {
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
@@ -152,6 +154,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Approve the router to spend tokens as needed
         _approve(address(this), address(uniswapV2Router), type(uint256).max);
+
+        // Set the price feed address for MATIC/USD
+        setPriceFeed(_priceFeedAddress, false); // false indicates it's not a direct C100/USD feed
     }
 
     // =======================
