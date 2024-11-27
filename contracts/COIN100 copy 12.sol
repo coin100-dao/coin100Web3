@@ -61,7 +61,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Reward Tracking Variables
     uint256 public rewardPerTokenStored;
     uint256 public lastUpdateTime;
-    uint256 public rewardRate = 10; // Example: 10 C100 tokens distributed per rebase
+    uint256 public rewardRate = 1000 * 1e18; // Initialized to 1000 C100 tokens per rebase
     uint256 public totalRewards;
     uint256 public constant MAX_REWARD_RATE = 2000 * 1e18; // Maximum tokens per rebase
     uint256 public constant MIN_REWARD_RATE = 500 * 1e18;  // Minimum tokens per rebase
@@ -398,6 +398,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (totalSupplyLP == 0) {
             return rewardPerTokenStored;
         }
+        // rewardRate is in 1e18, totalSupplyLP is in 1e18
+        // Thus, (rewardRate * 1e18) / totalSupplyLP results in 1e18 scaling
         return
             rewardPerTokenStored +
             ((rewardRate * 1e18) / totalSupplyLP);
@@ -405,7 +407,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Calculates the earned rewards for a user.
-    * This function accounts for the user's LP token holdings and the rewards accumulated over time.
     * @param account The address of the user.
     * @return The amount of rewards earned by the user.
     */
