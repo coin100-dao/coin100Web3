@@ -79,8 +79,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     address public developerWallet;
 
     // Chainlink Functions Configuration
-    address public constant FUNCTIONS_ROUTER_ADDRESS = 0xC22a79eBA640940ABB6dF0f7982cc119578E11De; // Chainlink Functions Router Address on Polygon
-    bytes32 public constant DON_ID = 0x66756e2d706f6c79676f6e2d616d6f792d310000000000000000000000000000; // DON ID: fun-polygon-amoy-1
+    address public functionsRouterAddress;
+    bytes32 public donId;
 
     // Subscription ID for Chainlink Functions
     uint64 public subscriptionId;
@@ -102,21 +102,31 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
     * @param _uniswapRouterAddress Address of the Uniswap V2 router.
+    * @param _functionsRouterAddress Address of the Chainlink Functions Router.
+    * @param _donId DON ID for Chainlink Functions.
     */
     constructor(
         address _developerWallet,
         uint64 _subscriptionId,
-        address _uniswapRouterAddress
+        address _uniswapRouterAddress,
+        address _functionsRouterAddress,
+        bytes32 _donId
     )
         ERC20("COIN100", "C100")
         Ownable()
-        FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
+        FunctionsClient(_functionsRouterAddress) // Initialize FunctionsClient with dynamic address
     {
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_uniswapRouterAddress != address(0), "Invalid Uniswap router address");
+        require(_functionsRouterAddress != address(0), "Invalid Functions router address");
+        require(_donId != bytes32(0), "Invalid DON ID");
 
         developerWallet = _developerWallet;
         subscriptionId = _subscriptionId;
+
+        // Assign dynamic Chainlink Functions parameters
+        functionsRouterAddress = _functionsRouterAddress;
+        donId = _donId;
 
         // Mint allocations
         _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 70% Public Sale + 20% Treasury
@@ -274,7 +284,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             encodedRequest,
             subscriptionId,
             300000, // gas limit
-            DON_ID
+            donId // Updated to use dynamic DON ID
         );
 
         emit FunctionsRequestSent(requestId);
