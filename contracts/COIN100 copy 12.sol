@@ -83,6 +83,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     
     address public developerWallet;
 
+    address public WMATIC;
+
     // Chainlink Functions Configuration
     address public functionsRouterAddress;
     bytes32 public donId;
@@ -121,6 +123,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     /**
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
     * @param _priceFeedAddress Address of the price feed.
+    * @param _wmatic Address of the WMATIC token.
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
     * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
@@ -129,6 +132,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     */
     constructor(
         address _priceFeedAddress,
+        address _wmatic,
         address _quickswapUniswapRouterAddress, 
         address _developerWallet,
         uint64 _subscriptionId,
@@ -139,10 +143,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         Ownable()
         FunctionsClient(_functionsRouterAddress)
     {
+        require(_priceFeedAddress != address(0), "Invalid price feed address");
+        require(_wmatic != address(0), "Invalid WMATIC address");
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
         require(_functionsRouterAddress != address(0), "Invalid Functions router address");
         require(_donId != bytes32(0), "Invalid DON ID");
+        require(_subscriptionId > 0, "Invalid subscription ID");
 
         developerWallet = _developerWallet;
         subscriptionId = _subscriptionId;
@@ -169,10 +176,12 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         // Initialize Uniswap V2 Router
         uniswapV2Router = IUniswapV2Router02(_quickswapUniswapRouterAddress);
 
-        // Create a Uniswap pair for this token
-        // Replace uniswapV2Router.WETH() with WMATIC address if necessary
+        // Set WMATIC address
+        WMATIC = _wmatic;
+
+        // Create a Uniswap pair for this token with WMATIC
         uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
-            .createPair(address(this), uniswapV2Router.WETH()); // Ensure WETH is actually WMATIC on Polygon
+            .createPair(address(this), WMATIC);
 
         require(uniswapV2Pair != address(0), "Failed to create Uniswap pair");
 
