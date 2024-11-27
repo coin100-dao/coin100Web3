@@ -251,6 +251,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         bytes memory response,
         bytes memory err
     ) internal override {
+        require(msg.sender == address(functionsRouter), "Unauthorized fulfillment");
+
         if (response.length > 0) {
             // Parse the response to uint256
             uint256 fetchedMarketCap = parseInt(string(response));
