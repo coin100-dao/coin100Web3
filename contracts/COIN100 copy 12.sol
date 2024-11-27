@@ -55,10 +55,20 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public burnFee = 50; // 50% of the feePercent (1.5%)
     uint256 public constant FEE_DIVISOR = 100;
 
+    // Reward Tracking Variables
+    uint256 public rewardPerTokenStored;
+    uint256 public lastUpdateTime;
+    uint256 public rewardRate = 10; // Example: 10 C100 tokens distributed per rebase
+    uint256 public totalRewards;
+    uint256 public constant MAX_REWARD_RATE = 20; // Upper limit
+    uint256 public constant MIN_REWARD_RATE = 5;  // Lower limit
+
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
     uint256 public scalingFactor = 380000; // Scaling factor to determine target market cap (e.g., targetC100MarketCap = fetchedMarketCap / scalingFactor)
 
+    uint256 public totalMarketCap; // Current total market cap in USD
+    
     address public developerWallet;
 
     // Chainlink Functions Configuration
@@ -72,19 +82,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public lastRebaseTime;
     uint256 public rebaseInterval = 24 hours;
 
-    uint256 public totalMarketCap; // Current total market cap in USD
-
     // Uniswap
     IUniswapV2Router02 public uniswapV2Router;
     address public uniswapV2Pair;
-
-    // Reward Tracking Variables
-    uint256 public rewardPerTokenStored;
-    uint256 public lastUpdateTime;
-    uint256 public rewardRate = 10; // Example: 10 C100 tokens distributed per rebase
-    uint256 public totalRewards;
-    uint256 public constant MAX_REWARD_RATE = 20; // Upper limit
-    uint256 public constant MIN_REWARD_RATE = 5;  // Lower limit
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
@@ -251,8 +251,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         bytes memory response,
         bytes memory err
     ) internal override {
-        require(msg.sender == address(functionsRouter), "Unauthorized fulfillment");
-
         if (response.length > 0) {
             // Parse the response to uint256
             uint256 fetchedMarketCap = parseInt(string(response));
