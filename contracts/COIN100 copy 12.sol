@@ -44,6 +44,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
     event RewardFeeUpdated(uint256 newRewardFee);
     event RewardsReplenished(uint256 amount, uint256 timestamp);
+    event ScalingFactorUpdated(uint256 newScalingFactor);
 
     // =======================
     // ======= STATE =========
@@ -513,6 +514,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         require(_newScalingFactor > 0, "Scaling factor must be positive");
         scalingFactor = _newScalingFactor;
         // Optionally, emit an event
+        emit ScalingFactorUpdated(_newScalingFactor);
     }
 
     // =======================
