@@ -277,25 +277,30 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18; // 8 decimals
-        uint256 scaledFetchedMarketCap = fetchedMarketCap / scalingFactor; // 8 decimals
+        
+        // Correct market cap calculation: (totalSupply / 1e18) * (price / 1e8)
+        // To maintain precision, calculate (totalSupply * price) / 1e26
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26; // 1e26 = 1e18 * 1e8
 
-        uint256 paf = (scaledFetchedMarketCap * 1e18) / currentC100MarketCap;
+        // Calculate the Price Adjustment Factor (paf) correctly scaled to 1e18
+        uint256 paf = (fetchedMarketCap * 1e18) / currentC100MarketCap; // paf should be ~1e18 when in balance
 
-        if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
+        if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // If paf > 1.05e18 (5% increase)
             uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
             uint256 mintAmount = (totalSupply() * rebaseFactor) / 1e18;
+            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds limit");
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
-        } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% decrease
+        } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // If paf < 0.95e18 (5% decrease)
             uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16);
             uint256 burnAmount = (totalSupply() * rebaseFactor) / 1e18;
+            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds limit");
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
 
-        lastMarketCap = scaledFetchedMarketCap;
-        emit PriceAdjusted(scaledFetchedMarketCap, block.timestamp);
+        lastMarketCap = fetchedMarketCap;
+        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
     /**
@@ -354,6 +359,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             totalRewards -= distributionAmount; // Deduct from totalRewards
             lastUpdateTime = block.timestamp;
             emit RewardsReplenished(distributionAmount, block.timestamp);
+            
+            // Optionally transfer rewards to a specific rewards pool or leave it in the contract for users to claim
+            // Example: _transfer(address(this), rewardsPool, distributionAmount);
         }
     }
 
