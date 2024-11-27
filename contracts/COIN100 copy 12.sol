@@ -97,6 +97,22 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
+    // =======================
+    // ====== FUNCTIONS =======
+    // =======================
+
+    /**
+     * @dev Allows the owner to set the Chainlink price feed address and specify its type.
+     * @param _priceFeedAddress The address of the price feed.
+     * @param _isDirectUSDFeed If true, the price feed is assumed to be C100/USD. If false, it's MATIC/USD.
+     */
+    function setPriceFeed(address _priceFeedAddress, bool _isDirectUSDFeed) public onlyOwner {
+        require(_priceFeedAddress != address(0), "Invalid price feed address");
+        priceFeed = AggregatorV3Interface(_priceFeedAddress);
+        useDirectPriceFeed = _isDirectUSDFeed;
+        emit PriceFeedUpdated(_priceFeedAddress);
+    }
+
     /**
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
     * @param _priceFeedAddress Address of the price feed.
@@ -122,8 +138,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
         require(_functionsRouterAddress != address(0), "Invalid Functions router address");
         require(_donId != bytes32(0), "Invalid DON ID");
-        require(_priceFeedAddress != address(0), "Invalid price feed address");
-        require(_subscriptionId > 0, "Invalid subscription ID");
 
         developerWallet = _developerWallet;
         subscriptionId = _subscriptionId;
@@ -131,6 +145,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         // Assign dynamic Chainlink Functions parameters
         functionsRouterAddress = _functionsRouterAddress;
         donId = _donId;
+
+        // Set the price feed address for MATIC/USD
+        setPriceFeed(_priceFeedAddress, false); // false indicates it's not a direct C100/USD feed
 
         // Mint allocations
         _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 70% Public Sale + 20% Treasury
@@ -156,9 +173,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Approve the router to spend tokens as needed
         _approve(address(this), address(uniswapV2Router), type(uint256).max);
-
-        // Set the price feed address for MATIC/USD
-        setPriceFeed(_priceFeedAddress, false); // false indicates it's not a direct C100/USD feed
     }
 
     // =======================
@@ -503,18 +517,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
     // ====== ADMIN ==========
     // =======================
-
-    /**
-    * @dev Allows the owner to set the Chainlink price feed address and specify its type.
-    * @param _priceFeedAddress The address of the price feed.
-    * @param _isDirectUSDFeed If true, the price feed is assumed to be C100/USD. If false, it's MATIC/USD.
-    */
-    function setPriceFeed(address _priceFeedAddress, bool _isDirectUSDFeed) external onlyOwner {
-        require(_priceFeedAddress != address(0), "Invalid price feed address");
-        priceFeed = AggregatorV3Interface(_priceFeedAddress);
-        useDirectPriceFeed = _isDirectUSDFeed;
-        emit PriceFeedUpdated(_priceFeedAddress);
-    }
 
     /**
     * @dev Allows the owner to update transaction fees.
