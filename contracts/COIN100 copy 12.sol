@@ -68,10 +68,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
-    uint256 public scalingFactor = 1000; // 0.1% of the total market cap
+    uint256 public scalingFactor = 100; // 100 for a target C100 market cap of 32B
 
-    uint256 public constant MAX_MINT_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per mint
-    uint256 public constant MAX_BURN_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per burn
+    uint256 public constant MAX_MINT_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per mint
+    uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per burn
 
     uint256 public totalMarketCap; // Current total market cap in USD
     
@@ -118,10 +118,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         subscriptionId = _subscriptionId;
 
         // Mint allocations
-        _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
+        _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 70% Public Sale + 20% Treasury
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
         _mint(address(this), (TOTAL_SUPPLY * 5) / 100); // 5% Rewards Pool
-        _mint(owner(), (TOTAL_SUPPLY * 20) / 100); // 20% Treasury or Reserve
 
         // Initialize totalRewards with the initial rewards pool
         totalRewards += (TOTAL_SUPPLY * 5) / 100;
@@ -275,46 +274,28 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     /**
     * @dev Adjusts the token supply based on the latest market cap data.
     * @param fetchedMarketCap The latest total market cap in USD (18 decimals).
-    *
-    * Logic:
-    * - Calculate the current market cap based on the token supply and price.
-    * - Determine the Price Adjustment Factor (PAF).
-    * - Mint or burn tokens to align with the target market cap.
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
-        // Fetch the current price of C100 in USD with 8 decimals
-        uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
-        
-        // Calculate the current market cap based on the current price
-        // totalSupply() is in 1e18, currentPrice is in 1e8
-        // Hence, (totalSupply * currentPrice) / 1e26 results in USD with 18 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26;
-        
-        // Calculate the target C100 market cap based on fetched market cap and scaling factor
-        // scalingFactor = 1000 implies targetC100MarketCap = fetchedMarketCap / 1000
-        uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor;
-        
-        // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
+        uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26; // Adjusted scaling
+
+        uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor; // Now target is 32B
+
         uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
-        
+
         if (paf > 1e18) {
-            // Market Cap Increased - Mint tokens to increase supply
             uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
             require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum limit");
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
         } else if (paf < 1e18) {
-            // Market Cap Decreased - Burn tokens to decrease supply
             uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
             require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum limit");
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
-        
-        // Update the lastMarketCap
+
         lastMarketCap = fetchedMarketCap;
-        
-        // Emit PriceAdjusted event
         emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
