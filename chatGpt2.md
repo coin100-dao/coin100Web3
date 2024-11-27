@@ -61,7 +61,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // Reward Tracking Variables
     uint256 public rewardPerTokenStored;
     uint256 public lastUpdateTime;
-    uint256 public rewardRate = 10; // Example: 10 C100 tokens distributed per rebase
+    uint256 public rewardRate = 1000 * 1e18; // Initialized to 1000 C100 tokens per rebase
     uint256 public totalRewards;
     uint256 public constant MAX_REWARD_RATE = 2000 * 1e18; // Maximum tokens per rebase
     uint256 public constant MIN_REWARD_RATE = 500 * 1e18;  // Minimum tokens per rebase
@@ -69,6 +69,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
     uint256 public scalingFactor = 1000; // 0.1% of the total market cap
+
+    uint256 public constant MAX_MINT_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per mint
+    uint256 public constant MAX_BURN_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per burn
 
     uint256 public totalMarketCap; // Current total market cap in USD
     
@@ -271,40 +274,46 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Adjusts the token supply based on the latest market cap data.
-    * @param fetchedMarketCap The latest total market cap in USD.
+    * @param fetchedMarketCap The latest total market cap in USD (18 decimals).
     *
     * Logic:
-    * - Calculate the desired total supply based on the fetched market cap and the current price.
-    * - Mint or burn tokens to match the desired supply.
+    * - Calculate the current market cap based on the token supply and price.
+    * - Determine the Price Adjustment Factor (PAF).
+    * - Mint or burn tokens to align with the target market cap.
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         // Fetch the current price of C100 in USD with 8 decimals
         uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
-
+        
         // Calculate the current market cap based on the current price
+        // totalSupply() is in 1e18, currentPrice is in 1e8
+        // Hence, (totalSupply * currentPrice) / 1e26 results in USD with 18 decimals
         uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26;
-
-        // Calculate the target total supply based on the fetched market cap and scaling factor
+        
+        // Calculate the target C100 market cap based on fetched market cap and scaling factor
+        // scalingFactor = 1000 implies targetC100MarketCap = fetchedMarketCap / 1000
         uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor;
-
+        
         // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
         uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
-
+        
         if (paf > 1e18) {
             // Market Cap Increased - Mint tokens to increase supply
             uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
+            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum limit");
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
         } else if (paf < 1e18) {
             // Market Cap Decreased - Burn tokens to decrease supply
             uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
+            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum limit");
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
-
+        
         // Update the lastMarketCap
         lastMarketCap = fetchedMarketCap;
-
+        
         // Emit PriceAdjusted event
         emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
@@ -394,6 +403,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (totalSupplyLP == 0) {
             return rewardPerTokenStored;
         }
+        // rewardRate is in 1e18, totalSupplyLP is in 1e18
+        // Thus, (rewardRate * 1e18) / totalSupplyLP results in 1e18 scaling
         return
             rewardPerTokenStored +
             ((rewardRate * 1e18) / totalSupplyLP);
@@ -401,7 +412,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Calculates the earned rewards for a user.
-    * This function accounts for the user's LP token holdings and the rewards accumulated over time.
     * @param account The address of the user.
     * @return The amount of rewards earned by the user.
     */
@@ -428,11 +438,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             newRewardRate = 500 * 1e18; // Lowest rewards per rebase
         }
         
-        // Apply bounds
-        if (newRewardRate > MAX_REWARD_RATE * 1e18) {
-            newRewardRate = MAX_REWARD_RATE * 1e18;
-        } else if (newRewardRate < MIN_REWARD_RATE * 1e18) {
-            newRewardRate = MIN_REWARD_RATE * 1e18;
+        // Apply bounds without additional scaling
+        if (newRewardRate > MAX_REWARD_RATE) {
+            newRewardRate = MAX_REWARD_RATE;
+        } else if (newRewardRate < MIN_REWARD_RATE) {
+            newRewardRate = MIN_REWARD_RATE;
         }
         
         if (newRewardRate != rewardRate) {
@@ -576,9 +586,12 @@ sugeest fixes
 dont write too much repetitve code .... give me the suggest fix (if any) with peroper code snippet that fit my code pls
 
 so like we want this project to grow and also be careful of minting and buring and such .. so we're always updating supply based on market cap of total 100 coin caps, current total is 3.2T but it might go up or down later
-also the amount of users holding the coin or rewards distributed .. need to make sure numbers are good and support the vision of the project and users could beneift just like the S&P500 holders where they buy at a certain price and sell high but also in a way that make the project grow
+also the amount of users holding the coin or rewards distributed .. 
+need to make sure numbers are good and support the vision of the project and users could beneift just like the S&P500 holders where they buy at a certain price and sell high but also in a way that make the project grow
 
-review all the numbers and suggest new numbers or adjustments if needed
+what else ? are we making sure all scenarios are covered in terms of numbers ? are we handling all these scenarios ? 
+
+review all the numbers and suggest new numbers or adjustments if needed (dont over engineer or complicate things ...)
 
 dont write too much repetitive code , ust give me the suggested code snippet .. if you're making changes in a function then give me full function code with comments 
 
