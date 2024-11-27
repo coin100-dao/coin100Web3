@@ -308,14 +308,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Adjusts the token supply based on the latest market cap data with rebase limits.
-    * @param fetchedMarketCap The latest total market cap in USD (18 decimals).
+    * @param fetchedMarketCap The latest total market cap in USD (8 decimals).
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e8;
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e8; // Adjusted scaling
 
         // Assuming fetchedMarketCap is already in USD with 8 decimals
-        uint256 paf = (scaledFetchedMarketCap * 1e18) / currentC100MarketCap;
+        uint256 paf = (fetchedMarketCap * 1e18) / currentC100MarketCap;
 
         if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
             uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
@@ -329,8 +329,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             emit TokensBurned(burnAmount);
         }
 
-        lastMarketCap = scaledFetchedMarketCap;
-        emit PriceAdjusted(scaledFetchedMarketCap, block.timestamp);
+        lastMarketCap = fetchedMarketCap;
+        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
     /**
@@ -601,6 +601,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
 }
+
 
 
 
