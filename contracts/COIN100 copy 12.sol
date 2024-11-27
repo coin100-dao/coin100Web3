@@ -98,13 +98,15 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     constructor(
         address _developerWallet,
         uint64 _subscriptionId,
-        address _priceFeedAddress
+        address _priceFeedAddress,
+        address _uniswapRouterAddress
     )
         ERC20("COIN100", "C100")
         Ownable()
         FunctionsClient(FUNCTIONS_ROUTER_ADDRESS)
     {
         require(_developerWallet != address(0), "Invalid developer wallet");
+        require(_uniswapRouterAddress != address(0), "Invalid Uniswap router address");
 
         developerWallet = _developerWallet;
         subscriptionId = _subscriptionId;
@@ -113,6 +115,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
         _mint(address(this), (TOTAL_SUPPLY * 5) / 100); // 5% Rewards Pool
+        _mint(owner(), (TOTAL_SUPPLY * 20) / 100); // 20% Treasury or Reserve
 
         // Initialize totalRewards with the initial rewards pool
         totalRewards += (TOTAL_SUPPLY * 5) / 100;
@@ -122,12 +125,15 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         lastUpdateTime = block.timestamp;
 
         // Initialize Uniswap V2 Router
-        uniswapV2Router = IUniswapV2Router02(0xedf6066a2b290C185783862C7F4776A2C8077AD1);
+        uniswapV2Router = IUniswapV2Router02(_uniswapRouterAddress);
+        uniswapV2RouterAddress = _uniswapRouterAddress;
 
         // Create a Uniswap pair for this token
         uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
             .createPair(address(this), uniswapV2Router.WETH());
-        
+
+        require(uniswapV2Pair != address(0), "Failed to create Uniswap pair");
+
         // Approve the router to spend tokens
         _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
 
