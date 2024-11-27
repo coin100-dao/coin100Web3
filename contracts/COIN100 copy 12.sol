@@ -70,6 +70,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public lastMarketCap;
     uint256 public scalingFactor = 1000; // 0.1% of the total market cap
 
+    uint256 public constant MAX_MINT_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per mint
+    uint256 public constant MAX_BURN_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per burn
+
     uint256 public totalMarketCap; // Current total market cap in USD
     
     address public developerWallet;
@@ -297,11 +300,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (paf > 1e18) {
             // Market Cap Increased - Mint tokens to increase supply
             uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
+            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum limit");
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
         } else if (paf < 1e18) {
             // Market Cap Decreased - Burn tokens to decrease supply
             uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
+            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum limit");
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
