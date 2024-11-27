@@ -42,6 +42,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
     event RewardsDistributed(address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
+    event RewardFeeUpdated(uint256 newRewardFee);
     event RewardsReplenished(uint256 amount, uint256 timestamp);
 
     // =======================
@@ -51,8 +52,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     // Transaction fee percentages (in basis points)
     uint256 public feePercent = 3; // 3% total fee
-    uint256 public developerFee = 50; // 50% of the feePercent (1.5%)
-    uint256 public burnFee = 50; // 50% of the feePercent (1.5%)
+    uint256 public developerFee = 40; // 40% of the feePercent (1.2%)
+    uint256 public burnFee = 40; // 40% of the feePercent (1.2%)
+    uint256 public rewardFee = 20; // 20% of the feePercent (0.6%)
     uint256 public constant FEE_DIVISOR = 100;
 
     // Reward Tracking Variables
@@ -126,7 +128,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Initialize Uniswap V2 Router
         uniswapV2Router = IUniswapV2Router02(_uniswapRouterAddress);
-        uniswapV2RouterAddress = _uniswapRouterAddress;
 
         // Create a Uniswap pair for this token
         uniswapV2Pair = IUniswapV2Factory(uniswapV2Router.factory())
@@ -165,17 +166,18 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 feeAmount = (amount * feePercent) / 100; // 3% of amount
 
         // Allocate fees based on adjusted percentages
-        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.5%
-        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR; // 1.5%
-        uint256 rewardFeeAmount = feeAmount - devFeeAmount - burnFeeAmount; // 0%
+        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.2%
+        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR; // 1.2%
+        uint256 rewardFeeAmount = (feeAmount * rewardFee) / FEE_DIVISOR; // 0.6%
 
         // Transfer individual fees
         super._transfer(sender, developerWallet, devFeeAmount); // Developer fee
         super._transfer(sender, address(0), burnFeeAmount); // Burn fee
 
-        // Allocate rewards (if any)
+        // Allocate rewards
         if (rewardFeeAmount > 0) {
             totalRewards += rewardFeeAmount;
+            emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
         }
 
         // Transfer the remaining amount to the recipient
@@ -374,7 +376,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         _transfer(address(this), msg.sender, reward);
 
-        emit RewardsDistributed(msg.sender, reward); // Emitting the event with the correct user
+        emit RewardsDistributed(msg.sender, reward);
     }
 
     /**
@@ -458,15 +460,18 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-     * @dev Allows the owner to update transaction fees.
-     * @param _developerFee New developer fee in basis points.
-     * @param _burnFee New burn fee in basis points.
-     */
-    function updateFees(uint256 _developerFee, uint256 _burnFee) external onlyOwner {
-        require(_developerFee + _burnFee <= 300, "Total fees cannot exceed 3%");
+    * @dev Allows the owner to update transaction fees.
+    * @param _developerFee New developer fee in basis points (percentage of feePercent).
+    * @param _burnFee New burn fee in basis points (percentage of feePercent).
+    * @param _rewardFee New reward fee in basis points (percentage of feePercent).
+    */
+    function updateFees(uint256 _developerFee, uint256 _burnFee, uint256 _rewardFee) external onlyOwner {
+        require(_developerFee + _burnFee + _rewardFee <= FEE_DIVISOR, "Total fee allocation cannot exceed 100%");
         developerFee = _developerFee;
         burnFee = _burnFee;
+        rewardFee = _rewardFee;
         emit FeesUpdated(_developerFee, _burnFee);
+        emit RewardFeeUpdated(_rewardFee);
     }
 
     /**
