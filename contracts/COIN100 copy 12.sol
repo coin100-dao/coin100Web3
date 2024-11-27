@@ -327,13 +327,12 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     function distributeRewards() internal {
         updateReward(address(0)); // Update global rewards
 
-        // Adjust the reward rate based on the current token price
         adjustRewardRate();
 
         uint256 distributionAmount = rewardRate;
 
         uint256 contractBalance = balanceOf(address(this));
-        uint256 availableForDistribution = contractBalance - totalRewards;
+        uint256 availableForDistribution = contractBalance > totalRewards ? contractBalance - totalRewards : 0;
 
         if (availableForDistribution < distributionAmount) {
             distributionAmount = availableForDistribution;
@@ -341,7 +340,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         if (distributionAmount > 0) {
             totalRewards += distributionAmount;
-            lastUpdateTime = block.timestamp; // Update after distributing rewards
+            lastUpdateTime = block.timestamp;
             emit RewardsReplenished(distributionAmount, block.timestamp);
         }
     }

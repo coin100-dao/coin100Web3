@@ -580,6 +580,10 @@ idea of contract
 
 **Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
 
+example of api call to coingecko brings back
+[{"id":"bitcoin","symbol":"btc","name":"Bitcoin","image":"https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png?1696501400","current_price":96313,"market_cap":1904065412525,"market_cap_rank":1,"fully_diluted_valuation":2020668573681,"total_volume":85700766757,"high_24h":96300,"low_24h":90752,"price_change_24h":2653.27,"price_change_percentage_24h":2.83289,"market_cap_change_24h":49364715638,"market_cap_change_percentage_24h":2.6616,"circulating_supply":19788190.0,"total_supply":21000000.0,"max_supply":21000000.0,"ath":99645,"ath_change_percentage":-3.48592,"ath_date":"2024-11-22T19:35:49.770Z","atl":67.81,"atl_change_percentage":141727.52805,"atl_date":"2013-07-06T00:00:00.000Z","roi":null,"last_updated":"2024-11-27T17:54:20.536Z"},{"id":"ethereum","symbol":"eth","name":"Ethereum","image":"https://coin-images.coingecko.com/coins/images/279/large/ethereum.png?1696501628","current_price":3569.16,"market_cap":429776749130,"market_cap_rank":2,"fully_diluted_valuation":429776749130,"total_volume":43788738645,"high_24h":3576.82,"low_24h":3262.47,"price_change_24h":242.58,"price_change_percentage_24h":7.29211,"market_cap_change_24h":29429360784,"market_cap_change_percentage_24h":7.35096,"circulating_supply":120435390.540387,"total_supply":120435390.540387,"max_supply":null,"ath":4878.26,"ath_change_percentage":-26.79511,"ath_date":"2021-11- .... etc}]
+
+
 
 review the code and show me whats redundent or logic with numbers that dont make sense 
 sugeest fixes 
