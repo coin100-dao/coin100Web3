@@ -271,25 +271,29 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     /**
     * @dev Adjusts the token supply based on the latest market cap data.
-    * @param fetchedMarketCap The latest total market cap in USD.
+    * @param fetchedMarketCap The latest total market cap in USD (18 decimals).
     *
     * Logic:
-    * - Calculate the desired total supply based on the fetched market cap and the current price.
-    * - Mint or burn tokens to match the desired supply.
+    * - Calculate the current market cap based on the token supply and price.
+    * - Determine the Price Adjustment Factor (PAF).
+    * - Mint or burn tokens to align with the target market cap.
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         // Fetch the current price of C100 in USD with 8 decimals
         uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
-
+        
         // Calculate the current market cap based on the current price
+        // totalSupply() is in 1e18, currentPrice is in 1e8
+        // Hence, (totalSupply * currentPrice) / 1e26 results in USD with 18 decimals
         uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26;
-
-        // Calculate the target total supply based on the fetched market cap and scaling factor
+        
+        // Calculate the target C100 market cap based on fetched market cap and scaling factor
+        // scalingFactor = 1000 implies targetC100MarketCap = fetchedMarketCap / 1000
         uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor;
-
+        
         // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
         uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
-
+        
         if (paf > 1e18) {
             // Market Cap Increased - Mint tokens to increase supply
             uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
@@ -301,10 +305,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
-
+        
         // Update the lastMarketCap
         lastMarketCap = fetchedMarketCap;
-
+        
         // Emit PriceAdjusted event
         emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
@@ -428,11 +432,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             newRewardRate = 500 * 1e18; // Lowest rewards per rebase
         }
         
-        // Apply bounds
-        if (newRewardRate > MAX_REWARD_RATE * 1e18) {
-            newRewardRate = MAX_REWARD_RATE * 1e18;
-        } else if (newRewardRate < MIN_REWARD_RATE * 1e18) {
-            newRewardRate = MIN_REWARD_RATE * 1e18;
+        // Apply bounds without additional scaling
+        if (newRewardRate > MAX_REWARD_RATE) {
+            newRewardRate = MAX_REWARD_RATE;
+        } else if (newRewardRate < MIN_REWARD_RATE) {
+            newRewardRate = MIN_REWARD_RATE;
         }
         
         if (newRewardRate != rewardRate) {
