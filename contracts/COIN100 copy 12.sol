@@ -122,6 +122,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
         require(_functionsRouterAddress != address(0), "Invalid Functions router address");
         require(_donId != bytes32(0), "Invalid DON ID");
+        require(_priceFeedAddress != address(0), "Invalid price feed address");
+        require(_subscriptionId > 0, "Invalid subscription ID");
 
         developerWallet = _developerWallet;
         subscriptionId = _subscriptionId;
