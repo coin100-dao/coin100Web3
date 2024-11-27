@@ -140,8 +140,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         require(uniswapV2Pair != address(0), "Failed to create Uniswap pair");
 
-        // Approve the router to spend tokens
-        _approve(address(this), address(uniswapV2Router), TOTAL_SUPPLY);
+        // Approve the router to spend tokens as needed
+        _approve(address(this), address(uniswapV2Router), type(uint256).max);
     }
 
     // =======================
@@ -390,7 +390,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             lastUpdateTime = block.timestamp;
             emit RewardsReplenished(distributionAmount, block.timestamp);
             
-            // Optionally transfer rewards to a specific rewards pool or leave it in the contract for users to claim
+            // Transfer rewards to a specific rewards pool or directly to users
             // Example: _transfer(address(this), rewardsPool, distributionAmount);
         }
     }
