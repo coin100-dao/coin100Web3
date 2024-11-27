@@ -33,7 +33,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event PriceAdjusted(uint256 newMarketCap, uint256 timestamp);
     event TokensBurned(uint256 amount);
     event TokensMinted(uint256 amount);
-    event FeesUpdated(uint256 developerFee, uint256 burnFee);
+    event FeesUpdated(uint256 developerFee, uint256 burnFee, uint256 rewardFee);
     event WalletsUpdated(address developerWallet);
     event RebaseIntervalUpdated(uint256 newInterval);
     event UpkeepPerformed(bytes performData);
@@ -63,8 +63,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public lastUpdateTime;
     uint256 public rewardRate = 10; // Example: 10 C100 tokens distributed per rebase
     uint256 public totalRewards;
-    uint256 public constant MAX_REWARD_RATE = 20; // Upper limit
-    uint256 public constant MIN_REWARD_RATE = 5;  // Lower limit
+    uint256 public constant MAX_REWARD_RATE = 2000 * 1e18; // Maximum tokens per rebase
+    uint256 public constant MIN_REWARD_RATE = 500 * 1e18;  // Minimum tokens per rebase
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
@@ -340,24 +340,18 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         // Adjust the reward rate based on the current token price
         adjustRewardRate();
 
-        // Calculate the distribution amount based on the new reward rate and rebaseInterval
-        uint256 distributionAmount = rewardRate * rebaseInterval; // tokens per second * seconds = tokens
+        uint256 distributionAmount = rewardRate;
 
-        // Check the contract's token balance in the rewards pool
         uint256 contractBalance = balanceOf(address(this));
         uint256 availableForDistribution = contractBalance - totalRewards;
 
-        // Adjust the distributionAmount if not enough tokens are available
         if (availableForDistribution < distributionAmount) {
             distributionAmount = availableForDistribution;
         }
 
-        // Ensure there is something to distribute
         if (distributionAmount > 0) {
-            // Update the totalRewards pool
             totalRewards += distributionAmount;
-
-            // Emit the new event for replenishing rewards
+            lastUpdateTime = block.timestamp; // Update after distributing rewards
             emit RewardsReplenished(distributionAmount, block.timestamp);
         }
     }
@@ -385,7 +379,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     */
     function updateReward(address account) internal {
         rewardPerTokenStored = rewardPerToken();
-        lastUpdateTime = block.timestamp;
         if (account != address(0)) {
             rewards[account] = earned(account);
             userRewardPerTokenPaid[account] = rewardPerTokenStored;
@@ -397,12 +390,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @return The updated reward per token.
     */
     function rewardPerToken() public view returns (uint256) {
-        if (IERC20(uniswapV2Pair).totalSupply() == 0) {
+        uint256 totalSupplyLP = IERC20(uniswapV2Pair).totalSupply();
+        if (totalSupplyLP == 0) {
             return rewardPerTokenStored;
         }
         return
             rewardPerTokenStored +
-            (((block.timestamp - lastUpdateTime) * rewardRate * 1e18) / IERC20(uniswapV2Pair).totalSupply());
+            ((rewardRate * 1e18) / totalSupplyLP);
     }
 
     /**
@@ -412,16 +406,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @return The amount of rewards earned by the user.
     */
     function earned(address account) public view returns (uint256) {
-        // Calculate the difference between the current reward per token and the user's last recorded reward per token
-        uint256 rewardDifference = rewardPerToken() - userRewardPerTokenPaid[account];
-
-        // Multiply the reward difference by the user's LP token balance
-        uint256 earnedRewards = (IERC20(uniswapV2Pair).balanceOf(account) * rewardDifference) / 1e18;
-
-        // Add any rewards already accumulated but not yet claimed
-        earnedRewards += rewards[account];
-
-        return earnedRewards;
+        uint256 balance = IERC20(uniswapV2Pair).balanceOf(account);
+        return ((balance * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / 1e18) + rewards[account];
     }
 
     /**
@@ -433,23 +419,22 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 newRewardRate;
         
         if (currentPrice < 1 * 1e8) { // Below $1
-            newRewardRate = 20; // Highest rewards
+            newRewardRate = 2000 * 1e18; // Highest rewards per rebase
         } else if (currentPrice >= 1 * 1e8 && currentPrice < 5 * 1e8) { // $1 - $5
-            newRewardRate = 15;
+            newRewardRate = 1500 * 1e18;
         } else if (currentPrice >= 5 * 1e8 && currentPrice < 10 * 1e8) { // $5 - $10
-            newRewardRate = 10;
+            newRewardRate = 1000 * 1e18;
         } else { // $10 and above
-            newRewardRate = 5; // Lowest rewards
+            newRewardRate = 500 * 1e18; // Lowest rewards per rebase
         }
         
-        // Apply bounds to prevent extreme rates
-        if (newRewardRate > MAX_REWARD_RATE) {
-            newRewardRate = MAX_REWARD_RATE;
-        } else if (newRewardRate < MIN_REWARD_RATE) {
-            newRewardRate = MIN_REWARD_RATE;
+        // Apply bounds
+        if (newRewardRate > MAX_REWARD_RATE * 1e18) {
+            newRewardRate = MAX_REWARD_RATE * 1e18;
+        } else if (newRewardRate < MIN_REWARD_RATE * 1e18) {
+            newRewardRate = MIN_REWARD_RATE * 1e18;
         }
         
-        // Update the rewardRate only if it has changed
         if (newRewardRate != rewardRate) {
             rewardRate = newRewardRate;
             emit RewardRateUpdated(newRewardRate, currentPrice);
@@ -471,8 +456,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         developerFee = _developerFee;
         burnFee = _burnFee;
         rewardFee = _rewardFee;
-        emit FeesUpdated(_developerFee, _burnFee);
-        emit RewardFeeUpdated(_rewardFee);
+        emit FeesUpdated(_developerFee, _burnFee, _rewardFee);
     }
 
     /**
