@@ -68,10 +68,10 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
-    uint256 public scalingFactor = 1000; // 0.1% of the total market cap
-
-    uint256 public constant MAX_MINT_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per mint
-    uint256 public constant MAX_BURN_AMOUNT = 10_000_000 * 1e18; // Example: Max 10 million tokens per burn
+    uint256 public scalingFactor = 100; // 100 for a target C100 market cap of 32B
+    uint256 public constant MAX_REBASE_PERCENT = 5; // Maximum 5% change per rebase
+    uint256 public constant MAX_MINT_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per mint
+    uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per burn
 
     uint256 public totalMarketCap; // Current total market cap in USD
     
@@ -118,10 +118,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         subscriptionId = _subscriptionId;
 
         // Mint allocations
-        _mint(msg.sender, (TOTAL_SUPPLY * 70) / 100); // 70% Public Sale
+        _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 70% Public Sale + 20% Treasury
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
         _mint(address(this), (TOTAL_SUPPLY * 5) / 100); // 5% Rewards Pool
-        _mint(owner(), (TOTAL_SUPPLY * 20) / 100); // 20% Treasury or Reserve
 
         // Initialize totalRewards with the initial rewards pool
         totalRewards += (TOTAL_SUPPLY * 5) / 100;
@@ -273,72 +272,66 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-    * @dev Adjusts the token supply based on the latest market cap data.
+    * @dev Adjusts the token supply based on the latest market cap data with rebase limits.
     * @param fetchedMarketCap The latest total market cap in USD (18 decimals).
-    *
-    * Logic:
-    * - Calculate the current market cap based on the token supply and price.
-    * - Determine the Price Adjustment Factor (PAF).
-    * - Mint or burn tokens to align with the target market cap.
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
-        // Fetch the current price of C100 in USD with 8 decimals
-        uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
-        
-        // Calculate the current market cap based on the current price
-        // totalSupply() is in 1e18, currentPrice is in 1e8
-        // Hence, (totalSupply * currentPrice) / 1e26 results in USD with 18 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26;
-        
-        // Calculate the target C100 market cap based on fetched market cap and scaling factor
-        // scalingFactor = 1000 implies targetC100MarketCap = fetchedMarketCap / 1000
-        uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor;
-        
-        // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
-        uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
-        
-        if (paf > 1e18) {
-            // Market Cap Increased - Mint tokens to increase supply
-            uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
-            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum limit");
+        uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18; // 8 decimals
+        uint256 scaledFetchedMarketCap = fetchedMarketCap / scalingFactor; // 8 decimals
+
+        uint256 paf = (scaledFetchedMarketCap * 1e18) / currentC100MarketCap;
+
+        if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
+            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
+            uint256 mintAmount = (totalSupply() * rebaseFactor) / 1e18;
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
-        } else if (paf < 1e18) {
-            // Market Cap Decreased - Burn tokens to decrease supply
-            uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
-            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum limit");
+        } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% decrease
+            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16);
+            uint256 burnAmount = (totalSupply() * rebaseFactor) / 1e18;
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
-        
-        // Update the lastMarketCap
-        lastMarketCap = fetchedMarketCap;
-        
-        // Emit PriceAdjusted event
-        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
+
+        lastMarketCap = scaledFetchedMarketCap;
+        emit PriceAdjusted(scaledFetchedMarketCap, block.timestamp);
     }
 
     /**
-    * @dev Parses a string to a uint256. Supports integers and decimals by truncating after the decimal point.
+    * @dev Parses a string to a uint256. Supports integers and decimals by scaling instead of truncating.
     * @param _a The string to parse.
     * @return _parsed The parsed uint256.
     */
     function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
         bytes memory bresult = bytes(_a);
         uint256 result = 0;
+        uint256 decimalPlaces = 0;
         bool decimalPointEncountered = false;
         for (uint256 i = 0; i < bresult.length; i++) {
             if (bresult[i] == ".") {
                 decimalPointEncountered = true;
-                break; // Stop parsing at decimal point
+                continue;
             }
             if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
-                result = result * 10 + (uint8(bresult[i]) - 48);
+                if (decimalPointEncountered) {
+                    if (decimalPlaces < 8) { // Limit to 8 decimal places
+                        result = result * 10 + (uint8(bresult[i]) - 48);
+                        decimalPlaces++;
+                    }
+                } else {
+                    result = result * 10 + (uint8(bresult[i]) - 48);
+                }
             }
+        }
+        // Scale to 18 decimals
+        if (decimalPlaces < 18) {
+            result = result * (10**(18 - decimalPlaces));
+        } else if (decimalPlaces > 18) {
+            result = result / (10**(decimalPlaces - 18));
         }
         return result;
     }
-
     
     /**
     * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
@@ -346,21 +339,20 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     function distributeRewards() internal {
         updateReward(address(0)); // Update global rewards
 
-        // Adjust the reward rate based on the current token price
         adjustRewardRate();
 
         uint256 distributionAmount = rewardRate;
 
         uint256 contractBalance = balanceOf(address(this));
-        uint256 availableForDistribution = contractBalance - totalRewards;
+        uint256 availableForDistribution = contractBalance > totalRewards ? contractBalance - totalRewards : 0;
 
         if (availableForDistribution < distributionAmount) {
             distributionAmount = availableForDistribution;
         }
 
         if (distributionAmount > 0) {
-            totalRewards += distributionAmount;
-            lastUpdateTime = block.timestamp; // Update after distributing rewards
+            totalRewards -= distributionAmount; // Deduct from totalRewards
+            lastUpdateTime = block.timestamp;
             emit RewardsReplenished(distributionAmount, block.timestamp);
         }
     }
@@ -403,8 +395,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (totalSupplyLP == 0) {
             return rewardPerTokenStored;
         }
-        // rewardRate is in 1e18, totalSupplyLP is in 1e18
-        // Thus, (rewardRate * 1e18) / totalSupplyLP results in 1e18 scaling
+        // Ensure no overflow and proper scaling
         return
             rewardPerTokenStored +
             ((rewardRate * 1e18) / totalSupplyLP);
@@ -417,6 +408,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     */
     function earned(address account) public view returns (uint256) {
         uint256 balance = IERC20(uniswapV2Pair).balanceOf(account);
+        if (balance == 0) {
+            return rewards[account];
+        }
         return ((balance * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / 1e18) + rewards[account];
     }
 
@@ -575,6 +569,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
 
 
+
 idea of contract
 **COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S\&P 500, COIN100
 
@@ -596,6 +591,9 @@ need to make sure numbers are good and support the vision of the project and use
 what else ? are we making sure all scenarios are covered in terms of numbers ? are we handling all these scenarios ? 
 
 review all the numbers and suggest new numbers or adjustments if needed (dont over engineer or complicate things ...)
+
+if the numbers are "okay" and things or good to kick off the project at least .. dont feel compelled to suggest fixes ... we just need to make sure we're ready for the unknown ... but like if its good then its good 
+think logically and use math to calcualte outcomes so ifthings are good dont suggest but let me know what you think otherwise suggest
 
 dont write too much repetitive code , ust give me the suggested code snippet .. if you're making changes in a function then give me full function code with comments 
 

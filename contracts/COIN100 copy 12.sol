@@ -69,7 +69,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
     uint256 public scalingFactor = 100; // 100 for a target C100 market cap of 32B
-
+    uint256 public constant MAX_REBASE_PERCENT = 5; // Maximum 5% change per rebase
     uint256 public constant MAX_MINT_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per mint
     uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per burn
 
@@ -272,54 +272,66 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-    * @dev Adjusts the token supply based on the latest market cap data.
+    * @dev Adjusts the token supply based on the latest market cap data with rebase limits.
     * @param fetchedMarketCap The latest total market cap in USD (18 decimals).
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26; // Adjusted scaling
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18; // 8 decimals
+        uint256 scaledFetchedMarketCap = fetchedMarketCap / scalingFactor; // 8 decimals
 
-        uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor; // Now target is 32B
+        uint256 paf = (scaledFetchedMarketCap * 1e18) / currentC100MarketCap;
 
-        uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
-
-        if (paf > 1e18) {
-            uint256 mintAmount = (totalSupply() * (paf - 1e18)) / 1e18;
-            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum limit");
+        if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
+            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
+            uint256 mintAmount = (totalSupply() * rebaseFactor) / 1e18;
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
-        } else if (paf < 1e18) {
-            uint256 burnAmount = (totalSupply() * (1e18 - paf)) / 1e18;
-            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum limit");
+        } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% decrease
+            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16);
+            uint256 burnAmount = (totalSupply() * rebaseFactor) / 1e18;
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
 
-        lastMarketCap = fetchedMarketCap;
-        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
+        lastMarketCap = scaledFetchedMarketCap;
+        emit PriceAdjusted(scaledFetchedMarketCap, block.timestamp);
     }
 
     /**
-    * @dev Parses a string to a uint256. Supports integers and decimals by truncating after the decimal point.
+    * @dev Parses a string to a uint256. Supports integers and decimals by scaling instead of truncating.
     * @param _a The string to parse.
     * @return _parsed The parsed uint256.
     */
     function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
         bytes memory bresult = bytes(_a);
         uint256 result = 0;
+        uint256 decimalPlaces = 0;
         bool decimalPointEncountered = false;
         for (uint256 i = 0; i < bresult.length; i++) {
             if (bresult[i] == ".") {
                 decimalPointEncountered = true;
-                break; // Stop parsing at decimal point
+                continue;
             }
             if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
-                result = result * 10 + (uint8(bresult[i]) - 48);
+                if (decimalPointEncountered) {
+                    if (decimalPlaces < 8) { // Limit to 8 decimal places
+                        result = result * 10 + (uint8(bresult[i]) - 48);
+                        decimalPlaces++;
+                    }
+                } else {
+                    result = result * 10 + (uint8(bresult[i]) - 48);
+                }
             }
+        }
+        // Scale to 18 decimals
+        if (decimalPlaces < 18) {
+            result = result * (10**(18 - decimalPlaces));
+        } else if (decimalPlaces > 18) {
+            result = result / (10**(decimalPlaces - 18));
         }
         return result;
     }
-
     
     /**
     * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
@@ -339,7 +351,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         }
 
         if (distributionAmount > 0) {
-            totalRewards += distributionAmount;
+            totalRewards -= distributionAmount; // Deduct from totalRewards
             lastUpdateTime = block.timestamp;
             emit RewardsReplenished(distributionAmount, block.timestamp);
         }
@@ -383,8 +395,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (totalSupplyLP == 0) {
             return rewardPerTokenStored;
         }
-        // rewardRate is in 1e18, totalSupplyLP is in 1e18
-        // Thus, (rewardRate * 1e18) / totalSupplyLP results in 1e18 scaling
+        // Ensure no overflow and proper scaling
         return
             rewardPerTokenStored +
             ((rewardRate * 1e18) / totalSupplyLP);
@@ -397,6 +408,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     */
     function earned(address account) public view returns (uint256) {
         uint256 balance = IERC20(uniswapV2Pair).balanceOf(account);
+        if (balance == 0) {
+            return rewards[account];
+        }
         return ((balance * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / 1e18) + rewards[account];
     }
 
