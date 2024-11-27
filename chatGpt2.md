@@ -18,6 +18,7 @@ import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/
 // Import Uniswap V2 Interfaces
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
 
 /**
@@ -44,7 +45,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
     event RewardFeeUpdated(uint256 newRewardFee);
     event RewardsReplenished(uint256 amount, uint256 timestamp);
-    event ScalingFactorUpdated(uint256 newScalingFactor);
     event PriceFeedUpdated(address newPriceFeed);
 
     // =======================
@@ -70,7 +70,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
-    uint256 public scalingFactor = 100; // 100 for a target C100 market cap of 32B
     uint256 public constant MAX_REBASE_PERCENT = 5; // Maximum 5% change per rebase
     uint256 public constant MAX_MINT_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per mint
     uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per burn
@@ -92,6 +91,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     // Uniswap
     IUniswapV2Router02 public uniswapV2Router;
+    
     address public uniswapV2Pair;
 
     mapping(address => uint256) public userRewardPerTokenPaid;
@@ -312,9 +312,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
         uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18; // 8 decimals
-        uint256 scaledFetchedMarketCap = fetchedMarketCap / scalingFactor; // 8 decimals
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e8;
 
+        // Assuming fetchedMarketCap is already in USD with 8 decimals
         uint256 paf = (scaledFetchedMarketCap * 1e18) / currentC100MarketCap;
 
         if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
@@ -334,7 +334,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-    * @dev Parses a string to a uint256. Supports integers and decimals by scaling instead of truncating.
+    * @dev Parses a string to a uint256.
     * @param _a The string to parse.
     * @return _parsed The parsed uint256.
     */
@@ -359,11 +359,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
                 }
             }
         }
-        // Scale to 18 decimals
-        if (decimalPlaces < 18) {
-            result = result * (10**(18 - decimalPlaces));
-        } else if (decimalPlaces > 18) {
-            result = result / (10**(decimalPlaces - 18));
+        // Scale to 8 decimals instead of 18
+        if (decimalPlaces < 8) {
+            result = result * (10**(8 - decimalPlaces));
+        } else if (decimalPlaces > 8) {
+            result = result / (10**(decimalPlaces - 8));
         }
         return result;
     }
@@ -544,20 +544,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit RebaseIntervalUpdated(_newInterval);
     }
 
-    /**
-    * @dev Allows the owner to update the scaling factor.
-    * @param _newScalingFactor The new scaling factor.
-    *
-    * Requirements:
-    * - `_newScalingFactor` must correspond to a realistic and desired proportion.
-    *   For example, for 0.1%, set `_newScalingFactor` to 1,000.
-    */
-    function updateScalingFactor(uint256 _newScalingFactor) external onlyOwner {
-        require(_newScalingFactor > 0, "Scaling factor must be positive");
-        scalingFactor = _newScalingFactor;
-        emit ScalingFactorUpdated(_newScalingFactor);
-    }
-
     // =======================
     // ====== PAUSABLE ========
     // =======================
@@ -615,6 +601,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
 }
+
 
 
 idea of contract
