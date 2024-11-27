@@ -57,7 +57,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
-    uint256 public constant SCALING_FACTOR = 380000; // Scaling factor to determine target market cap (e.g., targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR)
+    uint256 public scalingFactor = 380000; // Scaling factor to determine target market cap (e.g., targetC100MarketCap = fetchedMarketCap / scalingFactor)
 
     address public developerWallet;
 
@@ -282,7 +282,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18;
 
         // Calculate the target total supply based on the fetched market cap and scaling factor
-        uint256 targetC100MarketCap = fetchedMarketCap / SCALING_FACTOR;
+        uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor;
 
         // Calculate Price Adjustment Factor (PAF) with 18 decimals precision
         uint256 paf = (targetC100MarketCap * 1e18) / currentC100MarketCap;
@@ -493,6 +493,16 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         rebaseInterval = _newInterval;
         emit RebaseIntervalUpdated(_newInterval);
+    }
+
+    /**
+    * @dev Allows the owner to update the scaling factor.
+    * @param _newScalingFactor The new scaling factor.
+    */
+    function updateScalingFactor(uint256 _newScalingFactor) external onlyOwner {
+        require(_newScalingFactor > 0, "Scaling factor must be positive");
+        scalingFactor = _newScalingFactor;
+        // Optionally, emit an event
     }
 
     // =======================
