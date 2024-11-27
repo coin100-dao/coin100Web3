@@ -281,7 +281,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         uint256 currentPrice = getLatestPrice(); // e.g., $1.23 = 123000000
 
         // Calculate the current market cap based on the current price
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e18;
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e26;
 
         // Calculate the target total supply based on the fetched market cap and scaling factor
         uint256 targetC100MarketCap = fetchedMarketCap / scalingFactor;
