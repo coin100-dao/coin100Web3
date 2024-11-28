@@ -94,7 +94,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     // Chainlink Automation Configuration
     uint256 public lastRebaseTime;
-    uint256 public rebaseInterval = 24 hours;
+    uint256 public rebaseInterval = 90 days;
 
     // Uniswap
     IUniswapV2Router02 public uniswapV2Router;
@@ -570,9 +570,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @param _newInterval The new interval in seconds. Must be at least 1 hour and no more than 7 days.
     */
     function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
-        require(_newInterval >= 1 hours, "Interval too short");
-        require(_newInterval <= 30 days, "Interval too long");
-
+        require(_newInterval >= 30 days, "Interval too short");
+        require(_newInterval <= 365 days, "Interval too long");
         rebaseInterval = _newInterval;
         emit RebaseIntervalUpdated(_newInterval);
     }
