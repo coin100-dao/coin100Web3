@@ -7,10 +7,10 @@
 pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
-import "@openzeppelin/contracts@4.8.0/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts@4.8.0/security/Pausable.sol";
-import "@openzeppelin/contracts@4.8.0/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 // Import Chainlink Functions Contracts
 import { FunctionsClient } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
@@ -210,7 +210,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         }
 
         // Calculate total fee
-        uint256 feeAmount = (amount * feePercent) / 100; // 3% of amount
+        uint256 feeAmount = (amount * feePercent) / 100; // 3% total fee
 
         // Allocate fees based on adjusted percentages
         uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.2%
@@ -474,7 +474,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @return The updated reward per token.
     */
     function rewardPerToken() public view returns (uint256) {
-        uint256 totalSupplyLP = IERC20(uniswapV2Pair).totalSupply();
+        uint256 totalSupplyLP = IUniswapV2Pair(uniswapV2Pair).totalSupply();
         if (totalSupplyLP == 0) {
             return rewardPerTokenStored;
         }
@@ -490,7 +490,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @return The amount of rewards earned by the user.
     */
     function earned(address account) public view returns (uint256) {
-        uint256 balance = IERC20(uniswapV2Pair).balanceOf(account);
+        uint256 balance = IUniswapV2Pair(uniswapV2Pair).balanceOf(account);
         if (balance == 0) {
             return rewards[account];
         }
