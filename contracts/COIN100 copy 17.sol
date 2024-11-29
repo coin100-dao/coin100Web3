@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
-**COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S\&P 500, COIN100
+**COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
 
 **Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
 */
@@ -80,7 +80,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per burn
 
     uint256 public totalMarketCap; // Current total market cap in USD
-    
+
     address public developerWallet;
 
     address public WMATIC;
@@ -124,9 +124,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
     * @param _priceFeedAddress Address of the price feed.
     * @param _wmatic Address of the WMATIC token.
+    * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
     * @param _developerWallet Address of the developer wallet.
     * @param _subscriptionId Chainlink subscription ID.
-    * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
     * @param _functionsRouterAddress Address of the Chainlink Functions Router.
     * @param _donId DON ID for Chainlink Functions.
     */
@@ -162,7 +162,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         setPriceFeed(_priceFeedAddress, false); // false indicates it's not a direct C100/USD feed
 
         // Mint allocations
-        _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 70% Public Sale + 20% Treasury
+        _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 90% Public Sale + Treasury
         _mint(developerWallet, (TOTAL_SUPPLY * 5) / 100); // 5% Developer
         _mint(address(this), (TOTAL_SUPPLY * 5) / 100); // 5% Rewards Pool
 
@@ -194,19 +194,19 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-    * @dev Overrides the ERC20 _transfer function to include fee logic and reward allocation.
-    * @param sender Address sending the tokens.
+    * @dev Overrides the ERC20 transfer function to include fee logic and reward allocation.
     * @param recipient Address receiving the tokens.
     * @param amount Amount of tokens being transferred.
+    * @return bool indicating success.
     */
-    function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
+    function transfer(address recipient, uint256 amount) public override whenNotPaused returns (bool) {
+        address sender = _msgSender();
         updateReward(sender);
         updateReward(recipient);
 
         if (sender == owner() || recipient == owner()) {
             // Owner transfers bypass fees
-            super._transfer(sender, recipient, amount);
-            return;
+            return super.transfer(recipient, amount);
         }
 
         // Calculate total fee
@@ -219,7 +219,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Transfer Developer Fee
         if (devFeeAmount > 0) {
-            super._transfer(sender, developerWallet, devFeeAmount);
+            super.transfer(developerWallet, devFeeAmount);
         }
 
         // Burn Fee
@@ -229,14 +229,60 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Reward Fee
         if (rewardFeeAmount > 0) {
-            super._transfer(sender, address(this), rewardFeeAmount);
+            super.transfer(address(this), rewardFeeAmount);
             totalRewards += rewardFeeAmount;
             emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
         }
 
         // Transfer the remaining amount to the recipient
         uint256 transferAmount = amount - feeAmount;
-        super._transfer(sender, recipient, transferAmount);
+        return super.transfer(recipient, transferAmount);
+    }
+
+    /**
+    * @dev Overrides the ERC20 transferFrom function to include fee logic and reward allocation.
+    * @param sender Address sending the tokens.
+    * @param recipient Address receiving the tokens.
+    * @param amount Amount of tokens being transferred.
+    * @return bool indicating success.
+    */
+    function transferFrom(address sender, address recipient, uint256 amount) public override whenNotPaused returns (bool) {
+        updateReward(sender);
+        updateReward(recipient);
+
+        if (sender == owner() || recipient == owner()) {
+            // Owner transfers bypass fees
+            return super.transferFrom(sender, recipient, amount);
+        }
+
+        // Calculate total fee
+        uint256 feeAmount = (amount * feePercent) / 100; // 3% total fee
+
+        // Allocate fees based on adjusted percentages
+        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.2%
+        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR;     // 1.2%
+        uint256 rewardFeeAmount = (feeAmount * rewardFee) / FEE_DIVISOR; // 0.6%
+
+        // Transfer Developer Fee
+        if (devFeeAmount > 0) {
+            super.transferFrom(sender, developerWallet, devFeeAmount);
+        }
+
+        // Burn Fee
+        if (burnFeeAmount > 0) {
+            _burn(sender, burnFeeAmount);
+        }
+
+        // Reward Fee
+        if (rewardFeeAmount > 0) {
+            super.transferFrom(sender, address(this), rewardFeeAmount);
+            totalRewards += rewardFeeAmount;
+            emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
+        }
+
+        // Transfer the remaining amount to the recipient
+        uint256 transferAmount = amount - feeAmount;
+        return super.transferFrom(sender, recipient, transferAmount);
     }
 
     // =======================
@@ -372,11 +418,13 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
             uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
             uint256 mintAmount = (totalSupply() * rebaseFactor) / 1e18;
+            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum");
             _mint(address(this), mintAmount);
             emit TokensMinted(mintAmount);
         } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% decrease
             uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16);
             uint256 burnAmount = (totalSupply() * rebaseFactor) / 1e18;
+            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum");
             _burn(address(this), burnAmount);
             emit TokensBurned(burnAmount);
         }
@@ -563,18 +611,18 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit WalletsUpdated(_developerWallet);
     }
 
-    // /**
-    //  * @dev Allows the owner to update the Chainlink subscription ID.
-    //  * @param _subscriptionId The new subscription ID.
-    //  */
-    function updateSubscriptionId(uint64 _subscriptionId_) external onlyOwner {
-        subscriptionId = _subscriptionId_;
+    /**
+     * @dev Allows the owner to update the Chainlink subscription ID.
+     * @param newSubscriptionID_ The new subscription ID.
+     */
+    function updateSubscriptionId(uint64 newSubscriptionID_) external onlyOwner {
+        subscriptionId = newSubscriptionID_;
     }
 
     /**
     * @dev Allows the owner to update the rebase interval.
     *      Ensures that the new interval is within acceptable bounds to prevent abuse.
-    * @param _newInterval The new interval in seconds. Must be at least 1 hour and no more than 7 days.
+    * @param _newInterval The new interval in seconds. Must be at least 30 days and no more than 365 days.
     */
     function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
         require(_newInterval >= 30 days, "Interval too short");
