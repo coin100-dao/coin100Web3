@@ -140,7 +140,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         bytes32 _donId
     )
         ERC20("COIN100", "C100")
-        Ownable(msg.sender)
+        Ownable()
         FunctionsClient(_functionsRouterAddress)
     {
         require(_priceFeedAddress != address(0), "Invalid price feed address");
@@ -190,7 +190,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     // =======================
-    // ====== OVERRIDES ======
+    // ====== ERC20 OVERRIDES ==
     // =======================
 
     /**
@@ -214,22 +214,15 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
         // Allocate fees based on adjusted percentages
         uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.2%
-        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR;     // 1.2%
+        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR; // 1.2%
         uint256 rewardFeeAmount = (feeAmount * rewardFee) / FEE_DIVISOR; // 0.6%
 
-        // Transfer Developer Fee
-        if (devFeeAmount > 0) {
-            super._transfer(sender, developerWallet, devFeeAmount);
-        }
+        // Transfer individual fees
+        super._transfer(sender, developerWallet, devFeeAmount); // Developer fee
+        super._transfer(sender, address(0), burnFeeAmount); // Burn fee
 
-        // Burn Fee
-        if (burnFeeAmount > 0) {
-            _burn(sender, burnFeeAmount);
-        }
-
-        // Reward Fee
+        // Allocate rewards
         if (rewardFeeAmount > 0) {
-            super._transfer(sender, address(this), rewardFeeAmount);
             totalRewards += rewardFeeAmount;
             emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
         }
@@ -640,3 +633,18 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
 }
+
+error on ownable()
+TypeError: Wrong argument count for modifier invocation: 0 arguments given but expected 1.
+   --> contracts/Coin100.sol:143:9:
+    |
+143 |         Ownable()
+    |         ^^^^^^^^^
+
+doint write too much repetitve code .. find root cause issue and fix it 
+give me only relevant code snippet i need 
+if you're changing a function code ... give me full new code for that function 
+
+and befoer you start suggestion npm isntall fixes ... this is being deployed on remix ide 
+no npm packages are needed .. all handled properly by remix 
+
