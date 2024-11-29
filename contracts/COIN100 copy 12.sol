@@ -140,7 +140,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         bytes32 _donId
     )
         ERC20("COIN100", "C100")
-        Ownable()
+        Ownable(msg.sender)
         FunctionsClient(_functionsRouterAddress)
     {
         require(_priceFeedAddress != address(0), "Invalid price feed address");
@@ -194,43 +194,94 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-    * @dev Overrides the ERC20 _transfer function to include fee logic and reward allocation.
-    * @param sender Address sending the tokens.
-    * @param recipient Address receiving the tokens.
-    * @param amount Amount of tokens being transferred.
-    */
-    function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
-        updateReward(sender);
-        updateReward(recipient);
+     * @dev Overrides the ERC20 _update function to include fee logic and reward allocation.
+     * This function is called internally by _transfer, _mint, and _burn.
+     * @param from Address sending the tokens. If zero, it's a mint operation.
+     * @param to Address receiving the tokens. If zero, it's a burn operation.
+     * @param amount Amount of tokens being transferred, minted, or burned.
+     */
+    function _update(address from, address to, uint256 amount) internal override {
+        // If it's a transfer (neither minting nor burning)
+        if (from != address(0) && to != address(0)) {
+            // Implement your custom fee logic here
 
-        if (sender == owner() || recipient == owner()) {
-            // Owner transfers bypass fees
-            super._transfer(sender, recipient, amount);
-            return;
+            // Calculate total fee
+            uint256 feeAmount = (amount * feePercent) / 100; // e.g., 3%
+
+            // Allocate fees based on adjusted percentages
+            uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // e.g., 1.2%
+            uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR;     // e.g., 1.2%
+            uint256 rewardFeeAmount = (feeAmount * rewardFee) / FEE_DIVISOR; // e.g., 0.6%
+
+            // Calculate the net transfer amount after fees
+            uint256 transferAmount = amount - feeAmount;
+
+            // Perform the standard transfer of the net amount
+            super._update(from, to, transferAmount);
+
+            // Handle Developer Fee
+            if (devFeeAmount > 0) {
+                super._update(from, developerWallet, devFeeAmount);
+            }
+
+            // Handle Burn Fee
+            if (burnFeeAmount > 0) {
+                super._burn(from, burnFeeAmount);
+            }
+
+            // Handle Reward Fee
+            if (rewardFeeAmount > 0) {
+                super._update(from, address(this), rewardFeeAmount);
+                totalRewards += rewardFeeAmount;
+                emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
+            }
+
+            // Optionally, you can emit a Transfer event for the total amount including fees
+            // However, since _update already emits Transfer events, this might be redundant
+        } else {
+            // For minting or burning, proceed without applying fees
+            super._update(from, to, amount);
         }
-
-        // Calculate total fee
-        uint256 feeAmount = (amount * feePercent) / 100; // 3% total fee
-
-        // Allocate fees based on adjusted percentages
-        uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.2%
-        uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR; // 1.2%
-        uint256 rewardFeeAmount = (feeAmount * rewardFee) / FEE_DIVISOR; // 0.6%
-
-        // Transfer individual fees
-        super._transfer(sender, developerWallet, devFeeAmount); // Developer fee
-        super._transfer(sender, address(0), burnFeeAmount); // Burn fee
-
-        // Allocate rewards
-        if (rewardFeeAmount > 0) {
-            totalRewards += rewardFeeAmount;
-            emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
-        }
-
-        // Transfer the remaining amount to the recipient
-        uint256 transferAmount = amount - feeAmount;
-        super._transfer(sender, recipient, transferAmount);
     }
+
+    // /**
+    // * @dev Overrides the ERC20 _transfer function to include fee logic and reward allocation.
+    // * @param sender Address sending the tokens.
+    // * @param recipient Address receiving the tokens.
+    // * @param amount Amount of tokens being transferred.
+    // */
+    // function _transfer(address sender, address recipient, uint256 amount) internal override whenNotPaused {
+    //     updateReward(sender);
+    //     updateReward(recipient);
+
+    //     if (sender == owner() || recipient == owner()) {
+    //         // Owner transfers bypass fees
+    //         super._transfer(sender, recipient, amount);
+    //         return;
+    //     }
+
+    //     // Calculate total fee
+    //     uint256 feeAmount = (amount * feePercent) / 100; // 3% total fee
+
+    //     // Allocate fees based on adjusted percentages
+    //     uint256 devFeeAmount = (feeAmount * developerFee) / FEE_DIVISOR; // 1.2%
+    //     uint256 burnFeeAmount = (feeAmount * burnFee) / FEE_DIVISOR; // 1.2%
+    //     uint256 rewardFeeAmount = (feeAmount * rewardFee) / FEE_DIVISOR; // 0.6%
+
+    //     // Transfer individual fees
+    //     super._transfer(sender, developerWallet, devFeeAmount); // Developer fee
+    //     super._transfer(sender, address(0), burnFeeAmount); // Burn fee
+
+    //     // Allocate rewards
+    //     if (rewardFeeAmount > 0) {
+    //         totalRewards += rewardFeeAmount;
+    //         emit RewardsDistributed(address(this), rewardFeeAmount); // Optional: Emit event for internal tracking
+    //     }
+
+    //     // Transfer the remaining amount to the recipient
+    //     uint256 transferAmount = amount - feeAmount;
+    //     super._transfer(sender, recipient, transferAmount);
+    // }
 
     // =======================
     // ====== FUNCTIONS =======
