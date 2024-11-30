@@ -1,27 +1,24 @@
 // SPDX-License-Identifier: MIT
-/**
-**COIN100** is a decentralized cryptocurrency index fund built on the Polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
-
-**Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
-*/
 pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
-import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 // Import Uniswap V2 Interfaces
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
+// Import Chainlink Aggregator Interface
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
 /**
  * @title COIN100 (C100) Token
  * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization.
  */
-contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
+contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     // =======================
     // ======= EVENTS ========
     // =======================
@@ -39,6 +36,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     event RewardsReplenished(uint256 amount, uint256 timestamp);
     event USDCUpdated(address newUSDC);
     event UniswapV2RouterUpdated(address newUniswapV2Router);
+    event MaticPriceFeedUpdated(address newPriceFeed);
 
     // =======================
     // ======= STATE =========
@@ -78,6 +76,9 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     // USDC Token Address
     address public USDC;
 
+    // Chainlink Price Feed for MATIC/USD
+    AggregatorV3Interface public maticUsdPriceFeed;
+
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
 
@@ -91,17 +92,19 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     // =======================
 
     /**
-     * @dev Constructor that initializes the token, mints initial allocations.
+     * @dev Constructor that initializes the token, mints initial allocations, and sets up price feeds.
      * @param _wmatic Address of the WMATIC token.
      * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
      * @param _developerWallet Address of the developer wallet.
      * @param _usdc Address of the USDC token.
+     * @param _maticUsdPriceFeed Address of the Chainlink MATIC/USD price feed.
      */
     constructor(
         address _wmatic,
         address _quickswapUniswapRouterAddress, 
         address _developerWallet,
-        address _usdc
+        address _usdc,
+        address _maticUsdPriceFeed
     )
         ERC20("COIN100", "C100")
         Ownable(msg.sender)
@@ -110,9 +113,11 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
         require(_usdc != address(0), "Invalid USDC address");
+        require(_maticUsdPriceFeed != address(0), "Invalid MATIC/USD price feed address");
 
         developerWallet = _developerWallet;
         USDC = _usdc;
+        maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
 
         // Mint allocations
         _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 90% Public Sale + Treasury
@@ -333,16 +338,35 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         emit RewardFeeUpdated(_newReward);
     }
 
+    /**
+     * @dev Allows the owner to update the MATIC/USD price feed address.
+     * @param _newPriceFeed Address of the new Chainlink MATIC/USD price feed.
+     */
+    function updateMaticUsdPriceFeed(address _newPriceFeed) external onlyOwner {
+        require(_newPriceFeed != address(0), "Invalid price feed address");
+        maticUsdPriceFeed = AggregatorV3Interface(_newPriceFeed);
+        emit MaticPriceFeedUpdated(_newPriceFeed);
+    }
+
     // =======================
     // ====== FUNCTIONS =======
     // =======================
 
     /**
-     * @dev Retrieves the latest price of C100 in USD by leveraging Uniswap liquidity pools.
-     * Combines C100/USDC and C100/MATIC with MATIC/USD pairs for redundancy.
+     * @dev Retrieves the latest price of C100 in USD by averaging prices from USDC and MATIC pairs.
      * @return price The latest C100 price in USD with 6 decimals (USDC has 6 decimals).
      */
     function getLatestPrice() public view returns (uint256 price) {
+        uint256 priceUSDC = getPriceFromUSDC();
+        uint256 priceViaMATIC = getPriceFromMATIC();
+        price = (priceUSDC + priceViaMATIC) / 2;
+    }
+
+    /**
+     * @dev Internal function to fetch the C100/USDC price from Uniswap.
+     * @return priceUSDC The price of C100 in USDC with 6 decimals.
+     */
+    function getPriceFromUSDC() internal view returns (uint256 priceUSDC) {
         // Fetch C100/USDC price
         address pairUSDC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), USDC);
         require(pairUSDC != address(0), "C100/USDC pair does not exist");
@@ -352,8 +376,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         uint256 reserveC100_USDC = token0USDC == address(this) ? uint256(reserve0USDC) : uint256(reserve1USDC);
         uint256 reserveUSDC = token0USDC == address(this) ? uint256(reserve1USDC) : uint256(reserve0USDC);
         require(reserveC100_USDC > 0 && reserveUSDC > 0, "Uniswap reserves not available for USDC pair");
-        uint256 priceUSDC = (reserveUSDC * 1e6) / reserveC100_USDC;
+        priceUSDC = (reserveUSDC * 1e6) / reserveC100_USDC;
+    }
 
+    /**
+     * @dev Internal function to fetch the C100/MATIC price and convert it to USD using Chainlink.
+     * @return priceViaMATIC The price of C100 in USD derived via MATIC with 6 decimals.
+     */
+    function getPriceFromMATIC() internal view returns (uint256 priceViaMATIC) {
         // Fetch C100/MATIC price
         address pairMATIC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), WMATIC);
         require(pairMATIC != address(0), "C100/MATIC pair does not exist");
@@ -365,15 +395,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         require(reserveC100_MATIC > 0 && reserveMATIC > 0, "Uniswap reserves not available for MATIC pair");
         uint256 priceMATIC = (reserveMATIC * 1e18) / reserveC100_MATIC; // MATIC typically has 18 decimals
 
-        // Fetch MATIC/USD price via a reliable source or assume 1 MATIC = X USD
-        // For demonstration, assuming a fixed MATIC/USD rate; in practice, this should be dynamic or sourced securely
-        uint256 maticPriceUSD = 2000 * 1e6; // Example: $2000 per MATIC with 6 decimals
+        // Fetch MATIC/USD price from Chainlink
+        (, int256 price, , , ) = maticUsdPriceFeed.latestRoundData();
+        require(price > 0, "Invalid MATIC/USD price from oracle");
+        uint8 decimals = maticUsdPriceFeed.decimals();
+        uint256 maticPriceUSD = uint256(price) * (10 ** (6 - decimals)); // Adjust to 6 decimals
 
         // Calculate C100/USD price via MATIC
-        uint256 priceViaMATIC = (priceMATIC * maticPriceUSD) / 1e18; // Adjusting decimals
-
-        // Average both prices for robustness
-        price = (priceUSDC + priceViaMATIC) / 2;
+        priceViaMATIC = (priceMATIC * maticPriceUSD) / 1e18; // Adjusting decimals
     }
 
     /**
@@ -554,21 +583,5 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         }
 
         emit UpkeepPerformed(msg.sender, block.timestamp);
-    }
-
-    // =======================
-    // ====== SECURITY ========
-    // =======================
-
-    /**
-    * @dev Overrides the ERC20 _beforeTokenTransfer hook to integrate Pausable functionality.
-    * @param from Address transferring tokens.
-    * @param to Address receiving tokens.
-    * @param amount Amount of tokens being transferred.
-    */
-    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override {
-        super._beforeTokenTransfer(from, to, amount);
-
-        require(!paused(), "ERC20Pausable: token transfer while paused");
     }
 }
