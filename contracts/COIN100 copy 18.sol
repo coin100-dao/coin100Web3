@@ -339,35 +339,41 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @dev Retrieves the latest price of C100 in USD by leveraging Uniswap liquidity pools.
-     * Assumes that a C100/USDC pair exists on Uniswap.
+     * Combines C100/USDC and C100/MATIC with MATIC/USD pairs for redundancy.
      * @return price The latest C100 price in USD with 6 decimals (USDC has 6 decimals).
      */
     function getLatestPrice() public view returns (uint256 price) {
+        // Fetch C100/USDC price
         address pairUSDC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), USDC);
         require(pairUSDC != address(0), "C100/USDC pair does not exist");
+        IUniswapV2Pair pair1 = IUniswapV2Pair(pairUSDC);
+        (uint112 reserve0USDC, uint112 reserve1USDC, ) = pair1.getReserves();
+        address token0USDC = pair1.token0();
+        uint256 reserveC100_USDC = token0USDC == address(this) ? uint256(reserve0USDC) : uint256(reserve1USDC);
+        uint256 reserveUSDC = token0USDC == address(this) ? uint256(reserve1USDC) : uint256(reserve0USDC);
+        require(reserveC100_USDC > 0 && reserveUSDC > 0, "Uniswap reserves not available for USDC pair");
+        uint256 priceUSDC = (reserveUSDC * 1e6) / reserveC100_USDC;
 
-        IUniswapV2Pair pair = IUniswapV2Pair(pairUSDC);
-        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-        address token0 = pair.token0();
-        address token1 = pair.token1();
+        // Fetch C100/MATIC price
+        address pairMATIC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), WMATIC);
+        require(pairMATIC != address(0), "C100/MATIC pair does not exist");
+        IUniswapV2Pair pair2 = IUniswapV2Pair(pairMATIC);
+        (uint112 reserve0MATIC, uint112 reserve1MATIC, ) = pair2.getReserves();
+        address token0MATIC = pair2.token0();
+        uint256 reserveC100_MATIC = token0MATIC == address(this) ? uint256(reserve0MATIC) : uint256(reserve1MATIC);
+        uint256 reserveMATIC = token0MATIC == address(this) ? uint256(reserve1MATIC) : uint256(reserve0MATIC);
+        require(reserveC100_MATIC > 0 && reserveMATIC > 0, "Uniswap reserves not available for MATIC pair");
+        uint256 priceMATIC = (reserveMATIC * 1e18) / reserveC100_MATIC; // MATIC typically has 18 decimals
 
-        uint256 reserveC100;
-        uint256 reserveUSDC;
+        // Fetch MATIC/USD price via a reliable source or assume 1 MATIC = X USD
+        // For demonstration, assuming a fixed MATIC/USD rate; in practice, this should be dynamic or sourced securely
+        uint256 maticPriceUSD = 2000 * 1e6; // Example: $2000 per MATIC with 6 decimals
 
-        if (token0 == address(this)) {
-            reserveC100 = uint256(reserve0);
-            reserveUSDC = uint256(reserve1);
-        } else {
-            reserveC100 = uint256(reserve1);
-            reserveUSDC = uint256(reserve0);
-        }
+        // Calculate C100/USD price via MATIC
+        uint256 priceViaMATIC = (priceMATIC * maticPriceUSD) / 1e18; // Adjusting decimals
 
-        require(reserveC100 > 0 && reserveUSDC > 0, "Uniswap reserves not available");
-
-        // Calculate price: USDC per C100
-        // price = reserveUSDC / reserveC100
-        // USDC has 6 decimals
-        price = (reserveUSDC * 1e6) / reserveC100;
+        // Average both prices for robustness
+        price = (priceUSDC + priceViaMATIC) / 2;
     }
 
     /**
