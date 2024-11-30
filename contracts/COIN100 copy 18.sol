@@ -29,6 +29,7 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     event TokensBurned(uint256 amount);
     event TokensMinted(uint256 amount);
     event FeesUpdated(uint256 developerFee, uint256 burnFee, uint256 rewardFee);
+    event FeePercentUpdated(uint256 newFeePercent);
     event WalletsUpdated(address developerWallet);
     event RebaseIntervalUpdated(uint256 newInterval);
     event UpkeepPerformed(address indexed performer, uint256 timestamp);
@@ -36,7 +37,8 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
     event RewardFeeUpdated(uint256 newRewardFee);
     event RewardsReplenished(uint256 amount, uint256 timestamp);
-    event PriceFeedUpdated(address newPriceFeed); // Optional: Can be removed if not using price feed
+    event USDCUpdated(address newUSDC);
+    event UniswapV2RouterUpdated(address newUniswapV2Router);
 
     // =======================
     // ======= STATE =========
@@ -243,6 +245,95 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     }
 
     // =======================
+    // ====== ADMIN FUNCTIONS ==
+    // =======================
+
+    /**
+     * @dev Allows the owner to set the total transaction fee percentage.
+     * @param _feePercent The new fee percentage (e.g., 3 for 3%).
+     */
+    function setFeePercent(uint256 _feePercent) external onlyOwner {
+        require(_feePercent <= 100, "Fee percent cannot exceed 100%");
+        feePercent = _feePercent;
+        emit FeePercentUpdated(_feePercent);
+    }
+
+    /**
+     * @dev Allows the owner to update transaction fees.
+     * @param _developerFee New developer fee in basis points (percentage of feePercent).
+     * @param _burnFee New burn fee in basis points (percentage of feePercent).
+     * @param _rewardFee New reward fee in basis points (percentage of feePercent).
+     */
+    function updateFees(uint256 _developerFee, uint256 _burnFee, uint256 _rewardFee) external onlyOwner {
+        require(_developerFee + _burnFee + _rewardFee <= FEE_DIVISOR, "Total fee allocation cannot exceed 100%");
+        developerFee = _developerFee;
+        burnFee = _burnFee;
+        rewardFee = _rewardFee;
+        emit FeesUpdated(_developerFee, _burnFee, _rewardFee);
+    }
+
+    /**
+     * @dev Allows the owner to update wallet addresses for fee collection.
+     * @param _developerWallet New developer wallet address.
+     */
+    function updateWallets(address _developerWallet) external onlyOwner {
+        require(_developerWallet != address(0), "Invalid developer wallet address");
+        developerWallet = _developerWallet;
+        emit WalletsUpdated(_developerWallet);
+    }
+
+    /**
+     * @dev Allows the owner to update the USDC token address.
+     * @param _newUSDC The address of the new USDC token.
+     */
+    function setUSDC(address _newUSDC) external onlyOwner {
+        require(_newUSDC != address(0), "Invalid USDC address");
+        USDC = _newUSDC;
+        emit USDCUpdated(_newUSDC);
+        
+        // Create a new Uniswap pair for C100 and the new USDC if it doesn't exist
+        address newPair = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), USDC);
+        if (newPair == address(0)) {
+            newPair = IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), USDC);
+            require(newPair != address(0), "Failed to create new Uniswap USDC pair");
+        }
+    }
+
+    /**
+     * @dev Allows the owner to update the Uniswap V2 Router address.
+     * @param _newRouter Address of the new Uniswap V2 Router.
+     */
+    function setUniswapV2Router(address _newRouter) external onlyOwner {
+        require(_newRouter != address(0), "Invalid Uniswap V2 Router address");
+        uniswapV2Router = IUniswapV2Router02(_newRouter);
+        emit UniswapV2RouterUpdated(_newRouter);
+        
+        // Approve the new router to spend tokens as needed
+        _approve(address(this), address(uniswapV2Router), type(uint256).max);
+    }
+
+    /**
+     * @dev Allows the owner to update the rebase interval.
+     *      Ensures that the new interval is within acceptable bounds to prevent abuse.
+     * @param _newInterval The new interval in seconds. Must be at least 7 days and no more than 365 days.
+     */
+    function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
+        require(_newInterval >= 7 days, "Interval too short");
+        require(_newInterval <= 365 days, "Interval too long");
+        rebaseInterval = _newInterval;
+        emit RebaseIntervalUpdated(_newInterval);
+    }
+
+    /**
+     * @dev Allows the owner to set the upkeep reward amount.
+     * @param _newReward The new reward amount in C100 tokens.
+     */
+    function setUpkeepReward(uint256 _newReward) external onlyOwner {
+        upkeepReward = _newReward;
+        emit RewardFeeUpdated(_newReward);
+    }
+
+    // =======================
     // ====== FUNCTIONS =======
     // =======================
 
@@ -287,252 +378,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
         uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e6; // Adjusted scaling
 
-        // Assuming fetchedMarketCap is already in USD with 6 decimals
-        uint256 paf = (fetchedMarketCap * 1e18) / currentC100MarketCap;
-
-        if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
-            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
-            uint256 mintAmount = (totalSupply() * rebaseFactor) / 1e18;
-            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum");
-            _mint(address(this), mintAmount);
-            emit TokensMinted(mintAmount);
-        } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% decrease
-            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16);
-            uint256 burnAmount = (totalSupply() * rebaseFactor) / 1e18;
-            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum");
-            _burn(address(this), burnAmount);
-            emit TokensBurned(burnAmount);
-        }
-
-        lastMarketCap = fetchedMarketCap;
-        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
-    }
-
-    /**
-    * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
-    */
-    function distributeRewards() internal {
-        updateReward(address(0)); // Update global rewards
-
-        adjustRewardRate();
-
-        uint256 distributionAmount = rewardRate;
-
-        uint256 contractBalance = balanceOf(address(this));
-        uint256 availableForDistribution = contractBalance > totalRewards ? contractBalance - totalRewards : 0;
-
-        if (availableForDistribution < distributionAmount) {
-            distributionAmount = availableForDistribution;
-        }
-
-        if (distributionAmount > 0) {
-            totalRewards -= distributionAmount; // Deduct from totalRewards
-            lastUpdateTime = block.timestamp;
-            emit RewardsReplenished(distributionAmount, block.timestamp);
-            
-            // Transfer rewards to a specific rewards pool or directly to users
-            // Example: _transfer(address(this), rewardsPool, distributionAmount);
-        }
-    }
-
-    /**
-    * @dev Allows liquidity providers to claim their accumulated rewards.
-    * Users must hold LP tokens from the Uniswap pair to be eligible.
-    */
-    function claimRewards() external nonReentrant {
-        updateReward(msg.sender);
-
-        uint256 reward = rewards[msg.sender];
-        require(reward > 0, "No rewards available");
-
-        rewards[msg.sender] = 0;
-        totalRewards -= reward;
-
-        _transfer(address(this), msg.sender, reward);
-
-        emit RewardsDistributed(msg.sender, reward);
-    }
-
-    /**
-    * @dev Updates the reward variables to be up-to-date.
-    */
-    function updateReward(address account) internal {
-        rewardPerTokenStored = rewardPerToken();
-        if (account != address(0)) {
-            rewards[account] = earned(account);
-            userRewardPerTokenPaid[account] = rewardPerTokenStored;
-        }
-    }
-
-    /**
-    * @dev Calculates the current reward per token.
-    * @return The updated reward per token.
-    */
-    function rewardPerToken() public view returns (uint256) {
-        uint256 totalSupplyLP = IUniswapV2Pair(uniswapV2Pair).totalSupply();
-        if (totalSupplyLP == 0) {
-            return rewardPerTokenStored;
-        }
-        // Ensure no overflow and proper scaling
-        return
-            rewardPerTokenStored +
-            ((rewardRate * 1e18) / totalSupplyLP);
-    }
-
-    /**
-    * @dev Calculates the earned rewards for a user.
-    * @param account The address of the user.
-    * @return The amount of rewards earned by the user.
-    */
-    function earned(address account) public view returns (uint256) {
-        uint256 balance = IUniswapV2Pair(uniswapV2Pair).balanceOf(account);
-        if (balance == 0) {
-            return rewards[account];
-        }
-        return ((balance * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / 1e18) + rewards[account];
-    }
-
-    /**
-    * @dev Adjusts the reward rate based on the current token price.
-    * Lower reward rate when the token price increases and vice versa.
-    */
-    function adjustRewardRate() internal {
-        uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
-        uint256 newRewardRate;
-        
-        if (currentPrice < 1 * 1e6) { // Below $1
-            newRewardRate = 2000 * 1e18; // Highest rewards per rebase
-        } else if (currentPrice >= 1 * 1e6 && currentPrice < 5 * 1e6) { // $1 - $5
-            newRewardRate = 1500 * 1e18;
-        } else if (currentPrice >= 5 * 1e6 && currentPrice < 10 * 1e6) { // $5 - $10
-            newRewardRate = 1000 * 1e18;
-        } else { // $10 and above
-            newRewardRate = 500 * 1e18; // Lowest rewards per rebase
-        }
-        
-        // Apply bounds without additional scaling
-        if (newRewardRate > MAX_REWARD_RATE) {
-            newRewardRate = MAX_REWARD_RATE;
-        } else if (newRewardRate < MIN_REWARD_RATE) {
-            newRewardRate = MIN_REWARD_RATE;
-        }
-        
-        if (newRewardRate != rewardRate) {
-            rewardRate = newRewardRate;
-            emit RewardRateUpdated(newRewardRate, currentPrice);
-        }
-    }
-
-    // =======================
-    // ====== ADMIN ==========
-    // =======================
-
-    /**
-    * @dev Allows the owner to update transaction fees.
-    * @param _developerFee New developer fee in basis points (percentage of feePercent).
-    * @param _burnFee New burn fee in basis points (percentage of feePercent).
-    * @param _rewardFee New reward fee in basis points (percentage of feePercent).
-    */
-    function updateFees(uint256 _developerFee, uint256 _burnFee, uint256 _rewardFee) external onlyOwner {
-        require(_developerFee + _burnFee + _rewardFee <= FEE_DIVISOR, "Total fee allocation cannot exceed 100%");
-        developerFee = _developerFee;
-        burnFee = _burnFee;
-        rewardFee = _rewardFee;
-        emit FeesUpdated(_developerFee, _burnFee, _rewardFee);
-    }
-
-    /**
-     * @dev Allows the owner to update wallet addresses for fee collection.
-     * @param _developerWallet New developer wallet address.
-     */
-    function updateWallets(address _developerWallet) external onlyOwner {
-        require(_developerWallet != address(0), "Invalid developer wallet address");
-        developerWallet = _developerWallet;
-        emit WalletsUpdated(_developerWallet);
-    }
-
-    /**
-    * @dev Allows the owner to update the rebase interval.
-    *      Ensures that the new interval is within acceptable bounds to prevent abuse.
-    * @param _newInterval The new interval in seconds. Must be at least 7 days and no more than 365 days.
-    */
-    function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
-        require(_newInterval >= 7 days, "Interval too short");
-        require(_newInterval <= 365 days, "Interval too long");
-        rebaseInterval = _newInterval;
-        emit RebaseIntervalUpdated(_newInterval);
-    }
-
-    /**
-     * @dev Allows the owner to set the upkeep reward amount.
-     * @param _newReward The new reward amount in C100 tokens.
-     */
-    function setUpkeepReward(uint256 _newReward) external onlyOwner {
-        upkeepReward = _newReward;
-    }
-
-    // =======================
-    // ====== PAUSABLE ========
-    // =======================
-
-    /**
-     * @dev Allows the owner to pause all token transfers.
-     */
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    /**
-     * @dev Allows the owner to unpause all token transfers.
-     */
-    function unpause() external onlyOwner {
-        _unpause();
-    }
-
-    // =======================
-    // ====== UPKEEP =========
-    // =======================
-
-    /**
-     * @dev Allows anyone to perform upkeep tasks manually.
-     * Requires that at least `rebaseInterval` has passed since the last upkeep.
-     * Rewards the caller with `upkeepReward` C100 tokens.
-     * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
-     */
-    function performUpkeep(uint256 _fetchedMarketCap) external nonReentrant {
-        require(block.timestamp >= lastRebaseTime + rebaseInterval, "Upkeep interval not reached");
-        require(_fetchedMarketCap > 0, "Invalid market cap");
-
-        // Update the total market cap
-        totalMarketCap = _fetchedMarketCap;
-
-        // Adjust the supply based on the new market cap
-        adjustSupply(_fetchedMarketCap);
-
-        // Update the last rebase time
-        lastRebaseTime = block.timestamp;
-
-        // Reward the caller
-        if (upkeepReward > 0 && balanceOf(address(this)) >= upkeepReward) {
-            _transfer(address(this), msg.sender, upkeepReward);
-            emit RewardsDistributed(msg.sender, upkeepReward);
-        }
-
-        emit UpkeepPerformed(msg.sender, block.timestamp);
-    }
-
-    // =======================
-    // ====== REBASE LOGIC ====
-    // =======================
-
-    /**
-     * @dev Adjusts the token supply based on the fetched market cap with rebase limits.
-     * @param fetchedMarketCap The latest total market cap in USD (6 decimals).
-     */
-    function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
-        uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e6; // Adjusted scaling
-
         // Compute Price Adjustment Factor (PAF)
         uint256 paf = (fetchedMarketCap * 1e18) / currentC100MarketCap;
 
@@ -554,41 +399,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
         emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
-    /**
-    * @dev Parses a string to a uint256.
-    * @param _a The string to parse.
-    * @return _parsed The parsed uint256.
-    */
-    function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
-        bytes memory bresult = bytes(_a);
-        uint256 result = 0;
-        uint256 decimalPlaces = 0;
-        bool decimalPointEncountered = false;
-        for (uint256 i = 0; i < bresult.length; i++) {
-            if (bresult[i] == ".") {
-                decimalPointEncountered = true;
-                continue;
-            }
-            if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
-                if (decimalPointEncountered) {
-                    if (decimalPlaces < 6) { // Limit to 6 decimal places (USDC has 6)
-                        result = result * 10 + (uint8(bresult[i]) - 48);
-                        decimalPlaces++;
-                    }
-                } else {
-                    result = result * 10 + (uint8(bresult[i]) - 48);
-                }
-            }
-        }
-        // Scale to 6 decimals instead of 18
-        if (decimalPlaces < 6) {
-            result = result * (10**(6 - decimalPlaces));
-        } else if (decimalPlaces > 6) {
-            result = result / (10**(decimalPlaces - 6));
-        }
-        return result;
-    }
-    
     /**
     * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
     */
