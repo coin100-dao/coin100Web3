@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: MIT
+/**
+**COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
+
+**Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
+*/
 pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
@@ -64,8 +69,8 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18; // 1 billion tokens with 18 decimals
     uint256 public lastMarketCap;
     uint256 public constant MAX_REBASE_PERCENT = 5; // Maximum 5% change per rebase
-    uint256 public constant MAX_MINT_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per mint
-    uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // Increased to 50 million tokens per burn
+    uint256 public constant MAX_MINT_AMOUNT = 50_000_000 * 1e18; // 50 million tokens per mint
+    uint256 public constant MAX_BURN_AMOUNT = 50_000_000 * 1e18; // 50 million tokens per burn
 
     uint256 public totalMarketCap; // Current total market cap in USD
 
@@ -104,9 +109,16 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         _;
     }
 
-    // =======================
-    // ====== FUNCTIONS =======
-    // =======================
+    /**
+     * @dev Modifier to restrict Governor setter functions. This should be set to a secure address or a multi-sig.
+     * For simplicity, we'll assume the deployer can set the governor once.
+     */
+    address private governorSetter;
+
+    modifier onlyGovernorSetter() {
+        require(msg.sender == governorSetter, "Caller is not the governor setter");
+        _;
+    }
 
     /**
      * @dev Constructor that initializes the token, mints initial allocations, and sets up price feeds.
@@ -128,6 +140,8 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_uniswapV2RouterAddress != address(0), "Invalid Uniswap router address");
         require(_maticUsdPriceFeed != address(0), "Invalid MATIC/USD price feed address");
+
+        governorSetter = msg.sender; // Assign deployer as governorSetter
 
         developerWallet = _developerWallet;
         maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
@@ -261,33 +275,13 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     // =======================
 
     /**
-     * @dev Sets the Governor contract address. Can only be set once.
+     * @dev Sets the Governor contract address. Can only be set once by the governor setter.
      * @param _governor Address of the Governor contract.
      */
-    function setGovernor(address _governor) external onlyGovernorSetter {
+    function setGovernorContract(address _governor) external onlyGovernorSetter {
         require(_governor != address(0), "Invalid governor address");
         require(governor == address(0), "Governor already set");
         governor = _governor;
-    }
-
-    /**
-     * @dev Modifier to restrict Governor setter functions. This should be set to a secure address or a multi-sig.
-     * For simplicity, we'll assume the deployer can set the governor once.
-     */
-    address private governorSetter = msg.sender;
-
-    modifier onlyGovernorSetter() {
-        require(msg.sender == governorSetter, "Caller is not the governor setter");
-        _;
-    }
-
-    /**
-     * @dev Allows the governor setter to transfer the governor setter role to a new address.
-     * @param _newSetter Address of the new governor setter.
-     */
-    function transferGovernorSetter(address _newSetter) external onlyGovernorSetter {
-        require(_newSetter != address(0), "Invalid new setter address");
-        governorSetter = _newSetter;
     }
 
     /**
@@ -394,13 +388,12 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     }
 
     /**
-     * @dev Sets the Governor contract address. Can only be set once by the governor setter.
-     * @param _governor Address of the Governor contract.
+     * @dev Allows the governor setter to transfer the governor setter role to a new address.
+     * @param _newSetter Address of the new governor setter.
      */
-    function setGovernorContract(address _governor) external onlyGovernorSetter {
-        require(_governor != address(0), "Invalid governor address");
-        require(governor == address(0), "Governor already set");
-        governor = _governor;
+    function transferGovernorSetter(address _newSetter) external onlyGovernorSetter {
+        require(_newSetter != address(0), "Invalid new setter address");
+        governorSetter = _newSetter;
     }
 
     // =======================
@@ -678,10 +671,6 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
 
         emit UpkeepPerformed(msg.sender, block.timestamp);
     }
-
-    // =======================
-    // ====== REBASE =========
-    // =======================
 
     /**
      * @dev Allows the Governor to perform a rebase based on the fetched market cap.
