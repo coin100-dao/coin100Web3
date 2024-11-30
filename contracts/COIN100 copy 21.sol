@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: MIT
-/**
-**COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
-
-**Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
-*/
 pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 
 // Import Uniswap V2 Interfaces
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
@@ -22,8 +18,9 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 /**
  * @title COIN100 (C100) Token
  * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization with governance capabilities.
+ *      This contract is initially controlled by the deployer and can transfer governance to a community-governed Governor contract.
  */
-contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
+contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard, AccessControl {
     // =======================
     // ======= EVENTS ========
     // =======================
@@ -42,6 +39,12 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     event UniswapV2RouterUpdated(address newUniswapV2Router);
     event MaticPriceFeedUpdated(address newPriceFeed);
     event C100UsdPriceFeedUpdated(address newPriceFeed);
+    event GovernorUpdated(address newGovernor);
+
+    // =======================
+    // ======= ROLES =========
+    // =======================
+    bytes32 public constant GOVERNOR_ROLE = keccak256("GOVERNOR_ROLE");
 
     // =======================
     // ======= STATE =========
@@ -95,33 +98,12 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     uint256 public upkeepReward = 10 * 1e18; // Reward for performing upkeep (10 C100 tokens)
 
     // =======================
-    // ====== GOVERNANCE =======
+    // ====== CONSTRUCTOR ====
     // =======================
-
-    // The Governor contract address (to be set after deployment)
-    address public governor;
-
-    /**
-     * @dev Modifier to restrict functions to be called only by the Governor.
-     */
-    modifier onlyGovernor() {
-        require(msg.sender == governor, "Caller is not the governor");
-        _;
-    }
-
-    /**
-     * @dev Modifier to restrict Governor setter functions. This should be set to a secure address or a multi-sig.
-     * For simplicity, we'll assume the deployer can set the governor once.
-     */
-    address private governorSetter;
-
-    modifier onlyGovernorSetter() {
-        require(msg.sender == governorSetter, "Caller is not the governor setter");
-        _;
-    }
 
     /**
      * @dev Constructor that initializes the token, mints initial allocations, and sets up price feeds.
+     *      The deployer is granted the GOVERNOR_ROLE and can transfer it to a Governor contract later.
      * @param _wmatic Address of the WMATIC token.
      * @param _uniswapV2RouterAddress Address of the Uniswap V2 router.
      * @param _developerWallet Address of the developer wallet.
@@ -141,7 +123,9 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         require(_uniswapV2RouterAddress != address(0), "Invalid Uniswap router address");
         require(_maticUsdPriceFeed != address(0), "Invalid MATIC/USD price feed address");
 
-        governorSetter = msg.sender; // Assign deployer as governorSetter
+        // Set up Access Control
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender); // Deployer has admin role
+        _setupRole(GOVERNOR_ROLE, msg.sender); // Deployer has Governor role
 
         developerWallet = _developerWallet;
         maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
@@ -190,7 +174,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         updateReward(recipient);
 
         // If the Governor calls, allow bypassing fees
-        if (sender == governor || recipient == governor) {
+        if (hasRole(GOVERNOR_ROLE, sender) || hasRole(GOVERNOR_ROLE, recipient)) {
             return super.transfer(recipient, amount);
         }
 
@@ -236,7 +220,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         updateReward(recipient);
 
         // If the Governor calls, allow bypassing fees
-        if (sender == governor || recipient == governor) {
+        if (hasRole(GOVERNOR_ROLE, sender) || hasRole(GOVERNOR_ROLE, recipient)) {
             return super.transferFrom(sender, recipient, amount);
         }
 
@@ -275,26 +259,30 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     // =======================
 
     /**
-     * @dev Sets the Governor contract address. Can only be set once by the governor setter.
-     * @param _governor Address of the Governor contract.
+     * @dev Allows the current Governor to update the Governor contract address.
+     *      This function can be used to transfer governance to a community-governed Governor contract.
+     * @param _newGovernor Address of the new Governor contract.
      */
-    function setGovernorContract(address _governor) external onlyGovernorSetter {
-        require(_governor != address(0), "Invalid governor address");
-        require(governor == address(0), "Governor already set");
-        governor = _governor;
+    function setGovernor(address _newGovernor) external onlyRole(GOVERNOR_ROLE) {
+        require(_newGovernor != address(0), "Invalid Governor address");
+        // Grant GOVERNOR_ROLE to the new Governor
+        grantRole(GOVERNOR_ROLE, _newGovernor);
+        // Revoke GOVERNOR_ROLE from the current Governor
+        revokeRole(GOVERNOR_ROLE, msg.sender);
+        emit GovernorUpdated(_newGovernor);
     }
 
     /**
      * @dev Allows the Governor to pause token transfers.
      */
-    function pause() external onlyGovernor {
+    function pause() external onlyRole(GOVERNOR_ROLE) {
         _pause();
     }
 
     /**
      * @dev Allows the Governor to unpause token transfers.
      */
-    function unpause() external onlyGovernor {
+    function unpause() external onlyRole(GOVERNOR_ROLE) {
         _unpause();
     }
 
@@ -302,7 +290,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @dev Allows the Governor to set the fee percentage.
      * @param _feePercent The new fee percentage (e.g., 3 for 3%).
      */
-    function setFeePercent(uint256 _feePercent) external onlyGovernor {
+    function setFeePercent(uint256 _feePercent) external onlyRole(GOVERNOR_ROLE) {
         require(_feePercent <= 100, "Fee percent cannot exceed 100%");
         feePercent = _feePercent;
         emit FeePercentUpdated(_feePercent);
@@ -314,7 +302,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @param _burnFee New burn fee in basis points (percentage of feePercent).
      * @param _rewardFee New reward fee in basis points (percentage of feePercent).
      */
-    function updateFees(uint256 _developerFee, uint256 _burnFee, uint256 _rewardFee) external onlyGovernor {
+    function updateFees(uint256 _developerFee, uint256 _burnFee, uint256 _rewardFee) external onlyRole(GOVERNOR_ROLE) {
         require(_developerFee + _burnFee + _rewardFee <= FEE_DIVISOR, "Total fee allocation cannot exceed 100%");
         developerFee = _developerFee;
         burnFee = _burnFee;
@@ -326,7 +314,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @dev Allows the Governor to update wallet addresses for fee collection.
      * @param _developerWallet New developer wallet address.
      */
-    function updateWallets(address _developerWallet) external onlyGovernor {
+    function updateWallets(address _developerWallet) external onlyRole(GOVERNOR_ROLE) {
         require(_developerWallet != address(0), "Invalid developer wallet address");
         developerWallet = _developerWallet;
         emit WalletsUpdated(_developerWallet);
@@ -336,7 +324,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @dev Allows the Governor to update the Uniswap V2 Router address.
      * @param _newRouter Address of the new Uniswap V2 Router.
      */
-    function setUniswapV2Router(address _newRouter) external onlyGovernor {
+    function setUniswapV2Router(address _newRouter) external onlyRole(GOVERNOR_ROLE) {
         require(_newRouter != address(0), "Invalid Uniswap V2 Router address");
         uniswapV2Router = IUniswapV2Router02(_newRouter);
         emit UniswapV2RouterUpdated(_newRouter);
@@ -350,7 +338,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      *      Ensures that the new interval is within acceptable bounds to prevent abuse.
      * @param _newInterval The new interval in seconds. Must be at least 7 days and no more than 365 days.
      */
-    function updateRebaseInterval(uint256 _newInterval) external onlyGovernor {
+    function updateRebaseInterval(uint256 _newInterval) external onlyRole(GOVERNOR_ROLE) {
         require(_newInterval >= 7 days, "Interval too short");
         require(_newInterval <= 365 days, "Interval too long");
         rebaseInterval = _newInterval;
@@ -361,7 +349,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @dev Allows the Governor to set the upkeep reward amount.
      * @param _newReward The new reward amount in C100 tokens.
      */
-    function setUpkeepReward(uint256 _newReward) external onlyGovernor {
+    function setUpkeepReward(uint256 _newReward) external onlyRole(GOVERNOR_ROLE) {
         upkeepReward = _newReward;
         emit RewardFeeUpdated(_newReward);
     }
@@ -370,7 +358,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @dev Allows the Governor to update the MATIC/USD price feed address.
      * @param _newPriceFeed Address of the new Chainlink MATIC/USD price feed.
      */
-    function updateMaticUsdPriceFeed(address _newPriceFeed) external onlyGovernor {
+    function updateMaticUsdPriceFeed(address _newPriceFeed) external onlyRole(GOVERNOR_ROLE) {
         require(_newPriceFeed != address(0), "Invalid price feed address");
         maticUsdPriceFeed = AggregatorV3Interface(_newPriceFeed);
         emit MaticPriceFeedUpdated(_newPriceFeed);
@@ -381,19 +369,10 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      *      Once set, the contract will use this direct price feed for price determination.
      * @param _newC100UsdPriceFeed Address of the new Chainlink C100/USD price feed.
      */
-    function setC100UsdPriceFeed(address _newC100UsdPriceFeed) external onlyGovernor {
+    function setC100UsdPriceFeed(address _newC100UsdPriceFeed) external onlyRole(GOVERNOR_ROLE) {
         require(_newC100UsdPriceFeed != address(0), "Invalid C100/USD price feed address");
         c100UsdPriceFeed = AggregatorV3Interface(_newC100UsdPriceFeed);
         emit C100UsdPriceFeedUpdated(_newC100UsdPriceFeed);
-    }
-
-    /**
-     * @dev Allows the governor setter to transfer the governor setter role to a new address.
-     * @param _newSetter Address of the new governor setter.
-     */
-    function transferGovernorSetter(address _newSetter) external onlyGovernorSetter {
-        require(_newSetter != address(0), "Invalid new setter address");
-        governorSetter = _newSetter;
     }
 
     // =======================
@@ -522,8 +501,8 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     }
 
     /**
-    * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
-    */
+     * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
+     */
     function distributeRewards() internal {
         updateReward(address(0)); // Update global rewards
 
@@ -554,7 +533,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
 
     /**
     * @dev Allows liquidity providers to claim their accumulated rewards.
-    * Users must hold LP tokens from the Uniswap pair to be eligible.
+    *      Users must hold LP tokens from the Uniswap pair to be eligible.
     */
     function claimRewards() external nonReentrant {
         updateReward(msg.sender);
@@ -611,7 +590,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
 
     /**
     * @dev Adjusts the reward rate based on the current token price.
-    * Lower reward rate when the token price increases and vice versa.
+    *      Lower reward rate when the token price increases and vice versa.
     */
     function adjustRewardRate() internal {
         uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
@@ -646,8 +625,8 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
 
     /**
      * @dev Allows anyone to perform upkeep tasks manually.
-     * Requires that at least `rebaseInterval` has passed since the last upkeep.
-     * Rewards the caller with `upkeepReward` C100 tokens.
+     *      Requires that at least `rebaseInterval` has passed since the last upkeep.
+     *      Rewards the caller with `upkeepReward` C100 tokens.
      * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
      */
     function performUpkeep(uint256 _fetchedMarketCap) external nonReentrant {
@@ -676,7 +655,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
      * @dev Allows the Governor to perform a rebase based on the fetched market cap.
      * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
      */
-    function performRebase(uint256 _fetchedMarketCap) external onlyGovernor {
+    function performRebase(uint256 _fetchedMarketCap) external onlyRole(GOVERNOR_ROLE) {
         performUpkeep(_fetchedMarketCap);
     }
 
@@ -691,7 +670,7 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
     // =======================
 
     /**
-     * @dev The functions below are overrides required by Solidity.
+     * @dev Overrides the ERC20Votes _afterTokenTransfer hook.
      */
     function _afterTokenTransfer(address from, address to, uint256 amount)
         internal
@@ -700,6 +679,9 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         super._afterTokenTransfer(from, to, amount);
     }
 
+    /**
+     * @dev Overrides the ERC20Votes _mint hook.
+     */
     function _mint(address to, uint256 amount)
         internal
         override(ERC20, ERC20Votes)
@@ -707,6 +689,9 @@ contract COIN100 is ERC20Pausable, ERC20Votes, ReentrancyGuard {
         super._mint(to, amount);
     }
 
+    /**
+     * @dev Overrides the ERC20Votes _burn hook.
+     */
     function _burn(address account, uint256 amount)
         internal
         override(ERC20, ERC20Votes)
