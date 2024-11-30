@@ -1,38 +1,27 @@
 // SPDX-License-Identifier: MIT
 /**
-**COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
+**COIN100** is a decentralized cryptocurrency index fund built on the Polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
 
 **Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
 */
 pragma solidity ^0.8.20;
 
 // Import OpenZeppelin Contracts
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-
-// Import Chainlink Functions Contracts
-import { FunctionsClient } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
-import { FunctionsRequest } from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
-
-// Import Chainlink Automation Contracts
-import { AutomationCompatibleInterface } from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
-import { AggregatorV3Interface } from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { Pausable } from "@openzeppelin/contracts/security/Pausable.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 // Import Uniswap V2 Interfaces
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
-
 /**
  * @title COIN100 (C100) Token
  * @dev A decentralized cryptocurrency index fund tracking the top 100 cryptocurrencies by market capitalization.
  */
-contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, AutomationCompatibleInterface {
-    using FunctionsRequest for FunctionsRequest.Request;
-
+contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard {
     // =======================
     // ======= EVENTS ========
     // =======================
@@ -42,21 +31,16 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     event FeesUpdated(uint256 developerFee, uint256 burnFee, uint256 rewardFee);
     event WalletsUpdated(address developerWallet);
     event RebaseIntervalUpdated(uint256 newInterval);
-    event UpkeepPerformed(bytes performData);
-    event FunctionsRequestSent(bytes32 indexed requestId);
-    event FunctionsRequestFulfilled(bytes32 indexed requestId, uint256 newMarketCap);
-    event FunctionsRequestFailed(bytes32 indexed requestId, string reason);
+    event UpkeepPerformed(address indexed performer, uint256 timestamp);
     event RewardsDistributed(address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 newRewardRate, uint256 currentPrice);
     event RewardFeeUpdated(uint256 newRewardFee);
     event RewardsReplenished(uint256 amount, uint256 timestamp);
-    event PriceFeedUpdated(address newPriceFeed);
+    event PriceFeedUpdated(address newPriceFeed); // Optional: Can be removed if not using price feed
 
     // =======================
     // ======= STATE =========
     // =======================
-    AggregatorV3Interface internal priceFeed;
-    bool public useDirectPriceFeed = false; // false: use Uniswap + MATIC/USD; true: use direct C100/USD
 
     // Transaction fee percentages (in basis points)
     uint256 public feePercent = 3; // 3% total fee
@@ -85,81 +69,48 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
 
     address public WMATIC;
 
-    // Chainlink Functions Configuration
-    address public functionsRouterAddress;
-    bytes32 public donId;
-
-    // Subscription ID for Chainlink Functions
-    uint64 public subscriptionId;
-
-    // Chainlink Automation Configuration
-    uint256 public lastRebaseTime;
-    uint256 public rebaseInterval = 90 days;
-
     // Uniswap
     IUniswapV2Router02 public uniswapV2Router;
-    
     address public uniswapV2Pair;
+
+    // USDC Token Address
+    address public USDC;
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
+
+    // Upkeep Variables
+    uint256 public lastRebaseTime;
+    uint256 public rebaseInterval = 7 days; // Minimum 7 days between upkeeps
+    uint256 public upkeepReward = 10 * 1e18; // Reward for performing upkeep (10 C100 tokens)
 
     // =======================
     // ====== FUNCTIONS =======
     // =======================
 
     /**
-     * @dev Allows the owner to set the Chainlink price feed address and specify its type.
-     * @param _priceFeedAddress The address of the price feed.
-     * @param _isDirectUSDFeed If true, the price feed is assumed to be C100/USD. If false, it's MATIC/USD.
+     * @dev Constructor that initializes the token, mints initial allocations.
+     * @param _wmatic Address of the WMATIC token.
+     * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
+     * @param _developerWallet Address of the developer wallet.
+     * @param _usdc Address of the USDC token.
      */
-    function setPriceFeed(address _priceFeedAddress, bool _isDirectUSDFeed) public onlyOwner {
-        require(_priceFeedAddress != address(0), "Invalid price feed address");
-        priceFeed = AggregatorV3Interface(_priceFeedAddress);
-        useDirectPriceFeed = _isDirectUSDFeed;
-        emit PriceFeedUpdated(_priceFeedAddress);
-    }
-
-    /**
-    * @dev Constructor that initializes the token, mints initial allocations, and sets up Chainlink Functions.
-    * @param _priceFeedAddress Address of the price feed.
-    * @param _wmatic Address of the WMATIC token.
-    * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
-    * @param _developerWallet Address of the developer wallet.
-    * @param _subscriptionId Chainlink subscription ID.
-    * @param _functionsRouterAddress Address of the Chainlink Functions Router.
-    * @param _donId DON ID for Chainlink Functions.
-    */
     constructor(
-        address _priceFeedAddress,
         address _wmatic,
         address _quickswapUniswapRouterAddress, 
         address _developerWallet,
-        uint64 _subscriptionId,
-        address _functionsRouterAddress,
-        bytes32 _donId
+        address _usdc
     )
         ERC20("COIN100", "C100")
         Ownable(msg.sender)
-        FunctionsClient(_functionsRouterAddress)
     {
-        require(_priceFeedAddress != address(0), "Invalid price feed address");
         require(_wmatic != address(0), "Invalid WMATIC address");
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
-        require(_functionsRouterAddress != address(0), "Invalid Functions router address");
-        require(_donId != bytes32(0), "Invalid DON ID");
-        require(_subscriptionId > 0, "Invalid subscription ID");
+        require(_usdc != address(0), "Invalid USDC address");
 
         developerWallet = _developerWallet;
-        subscriptionId = _subscriptionId;
-
-        // Assign dynamic Chainlink Functions parameters
-        functionsRouterAddress = _functionsRouterAddress;
-        donId = _donId;
-
-        // Set the price feed address for MATIC/USD
-        setPriceFeed(_priceFeedAddress, false); // false indicates it's not a direct C100/USD feed
+        USDC = _usdc;
 
         // Mint allocations
         _mint(owner(), (TOTAL_SUPPLY * 90) / 100); // 90% Public Sale + Treasury
@@ -184,6 +135,12 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
             .createPair(address(this), WMATIC);
 
         require(uniswapV2Pair != address(0), "Failed to create Uniswap pair");
+
+        // Create a Uniswap pair for this token with USDC
+        address uniswapV2PairUSDC = IUniswapV2Factory(uniswapV2Router.factory())
+            .createPair(address(this), USDC);
+
+        require(uniswapV2PairUSDC != address(0), "Failed to create Uniswap USDC pair");
 
         // Approve the router to spend tokens as needed
         _approve(address(this), address(uniswapV2Router), type(uint256).max);
@@ -290,129 +247,47 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     // =======================
 
     /**
-    * @dev Retrieves the latest price of C100 in USD.
-    * If useDirectPriceFeed is true, it uses the direct C100/USD price feed.
-    * Otherwise, it derives the price using Uniswap C100/MATIC reserves and the MATIC/USD price feed.
-    * @return price The latest C100 price in USD with 8 decimals.
-    */
-    function getLatestPrice() public view returns (uint256 price) {
-        require(address(priceFeed) != address(0), "Price feed not set");
-
-        if (useDirectPriceFeed) {
-            // Direct C100/USD price feed
-            (, int256 c100Price, , , ) = priceFeed.latestRoundData();
-            require(c100Price > 0, "Invalid C100 price data");
-            price = uint256(c100Price); // Assuming 8 decimals
-        } else {
-            // Derive C100/USD price using Uniswap C100/MATIC and Chainlink MATIC/USD
-
-            // Get MATIC/USD price from Chainlink
-            (, int256 maticPrice, , , ) = priceFeed.latestRoundData();
-            require(maticPrice > 0, "Invalid MATIC price data");
-            uint256 maticPriceUSD = uint256(maticPrice); // Assuming 8 decimals
-
-            // Get reserves from Uniswap pair
-            (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(uniswapV2Pair).getReserves();
-            address token0 = IUniswapV2Pair(uniswapV2Pair).token0();
-
-            uint112 reserveC100;
-            uint112 reserveMATIC;
-
-            if (token0 == address(this)) {
-                reserveC100 = reserve0;
-                reserveMATIC = reserve1;
-            } else {
-                reserveC100 = reserve1;
-                reserveMATIC = reserve0;
-            }
-
-            require(reserveC100 > 0 && reserveMATIC > 0, "Uniswap reserves not available");
-
-            // Calculate C100/MATIC price (MATIC per C100)
-            // reserveMATIC / reserveC100
-            // To maintain precision, multiply by 1e18
-            uint256 c100PerMATIC = (uint256(reserveMATIC) * 1e18) / uint256(reserveC100);
-
-            // Calculate C100/USD price
-            // C100/USD = C100/MATIC * MATIC/USD
-            // (1e18 / 1e18) * (1e8) = 1e8
-            // So final price has 8 decimals
-            price = (c100PerMATIC * maticPriceUSD) / 1e18;
-        }
-    }
-
-    /**
-     * @dev Initiates a Chainlink Functions request to fetch the total market cap of the top 100 cryptocurrencies.
+     * @dev Retrieves the latest price of C100 in USD by leveraging Uniswap liquidity pools.
+     * Assumes that a C100/USDC pair exists on Uniswap.
+     * @return price The latest C100 price in USD with 6 decimals (USDC has 6 decimals).
      */
-    function requestMarketCapData() public onlyOwner {
-        // JavaScript code to fetch total market cap
-        string memory source = string(
-            abi.encodePacked(
-                "async function run(request) {",
-                "  const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1');",
-                "  const data = await response.json();",
-                "  let totalMarketCap = 0;",
-                "  for (const coin of data) {",
-                "    totalMarketCap += coin.market_cap;",
-                "  }",
-                "  return totalMarketCap.toString();",
-                "}"
-            )
-        );
+    function getLatestPrice() public view returns (uint256 price) {
+        address pairUSDC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), USDC);
+        require(pairUSDC != address(0), "C100/USDC pair does not exist");
 
-        // Initialize a new FunctionsRequest
-        FunctionsRequest.Request memory req;
-        req.initializeRequestForInlineJavaScript(source);
+        IUniswapV2Pair pair = IUniswapV2Pair(pairUSDC);
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+        address token0 = pair.token0();
+        address token1 = pair.token1();
 
-        // Encode the request
-        bytes memory encodedRequest = req.encodeCBOR();
+        uint256 reserveC100;
+        uint256 reserveUSDC;
 
-        // Send the request using the internal _sendRequest method
-        bytes32 requestId = _sendRequest(
-            encodedRequest,
-            subscriptionId,
-            300000, // gas limit
-            donId // Updated to use dynamic DON ID
-        );
-
-        emit FunctionsRequestSent(requestId);
-    }
-
-    /**
-    * @dev Callback function for Chainlink Functions to fulfill the request.
-    * @param requestId The request ID.
-    * @param response The response from the Chainlink Function.
-    * @param err The error, if any.
-    */
-    function fulfillRequest(
-        bytes32 requestId,
-        bytes memory response,
-        bytes memory err
-    ) internal override {
-        if (response.length > 0) {
-            // Parse the response to uint256
-            uint256 fetchedMarketCap = parseInt(string(response));
-            totalMarketCap = fetchedMarketCap;
-
-            // Adjust the token supply based on the fetched market cap
-            adjustSupply(fetchedMarketCap);
-
-            emit FunctionsRequestFulfilled(requestId, fetchedMarketCap);
+        if (token0 == address(this)) {
+            reserveC100 = uint256(reserve0);
+            reserveUSDC = uint256(reserve1);
         } else {
-            // Handle the error
-            emit FunctionsRequestFailed(requestId, string(err));
+            reserveC100 = uint256(reserve1);
+            reserveUSDC = uint256(reserve0);
         }
+
+        require(reserveC100 > 0 && reserveUSDC > 0, "Uniswap reserves not available");
+
+        // Calculate price: USDC per C100
+        // price = reserveUSDC / reserveC100
+        // USDC has 6 decimals
+        price = (reserveUSDC * 1e6) / reserveC100;
     }
 
     /**
-    * @dev Adjusts the token supply based on the latest market cap data with rebase limits.
-    * @param fetchedMarketCap The latest total market cap in USD (8 decimals).
-    */
+     * @dev Adjusts the token supply based on the latest market cap data with rebase limits.
+     * @param fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
+     */
     function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
-        uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
-        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e8; // Adjusted scaling
+        uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e6; // Adjusted scaling
 
-        // Assuming fetchedMarketCap is already in USD with 8 decimals
+        // Assuming fetchedMarketCap is already in USD with 6 decimals
         uint256 paf = (fetchedMarketCap * 1e18) / currentC100MarketCap;
 
         if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
@@ -433,41 +308,6 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
         emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
-    /**
-    * @dev Parses a string to a uint256.
-    * @param _a The string to parse.
-    * @return _parsed The parsed uint256.
-    */
-    function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
-        bytes memory bresult = bytes(_a);
-        uint256 result = 0;
-        uint256 decimalPlaces = 0;
-        bool decimalPointEncountered = false;
-        for (uint256 i = 0; i < bresult.length; i++) {
-            if (bresult[i] == ".") {
-                decimalPointEncountered = true;
-                continue;
-            }
-            if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
-                if (decimalPointEncountered) {
-                    if (decimalPlaces < 8) { // Limit to 8 decimal places
-                        result = result * 10 + (uint8(bresult[i]) - 48);
-                        decimalPlaces++;
-                    }
-                } else {
-                    result = result * 10 + (uint8(bresult[i]) - 48);
-                }
-            }
-        }
-        // Scale to 8 decimals instead of 18
-        if (decimalPlaces < 8) {
-            result = result * (10**(8 - decimalPlaces));
-        } else if (decimalPlaces > 8) {
-            result = result / (10**(decimalPlaces - 8));
-        }
-        return result;
-    }
-    
     /**
     * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
     */
@@ -557,14 +397,14 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     * Lower reward rate when the token price increases and vice versa.
     */
     function adjustRewardRate() internal {
-        uint256 currentPrice = getLatestPrice(); // Price with 8 decimals
+        uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
         uint256 newRewardRate;
         
-        if (currentPrice < 1 * 1e8) { // Below $1
+        if (currentPrice < 1 * 1e6) { // Below $1
             newRewardRate = 2000 * 1e18; // Highest rewards per rebase
-        } else if (currentPrice >= 1 * 1e8 && currentPrice < 5 * 1e8) { // $1 - $5
+        } else if (currentPrice >= 1 * 1e6 && currentPrice < 5 * 1e6) { // $1 - $5
             newRewardRate = 1500 * 1e18;
-        } else if (currentPrice >= 5 * 1e8 && currentPrice < 10 * 1e8) { // $5 - $10
+        } else if (currentPrice >= 5 * 1e6 && currentPrice < 10 * 1e6) { // $5 - $10
             newRewardRate = 1000 * 1e18;
         } else { // $10 and above
             newRewardRate = 500 * 1e18; // Lowest rewards per rebase
@@ -612,23 +452,23 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     /**
-     * @dev Allows the owner to update the Chainlink subscription ID.
-     * @param newSubscriptionID_ The new subscription ID.
-     */
-    function updateSubscriptionId(uint64 newSubscriptionID_) external onlyOwner {
-        subscriptionId = newSubscriptionID_;
-    }
-
-    /**
     * @dev Allows the owner to update the rebase interval.
     *      Ensures that the new interval is within acceptable bounds to prevent abuse.
-    * @param _newInterval The new interval in seconds. Must be at least 30 days and no more than 365 days.
+    * @param _newInterval The new interval in seconds. Must be at least 7 days and no more than 365 days.
     */
     function updateRebaseInterval(uint256 _newInterval) external onlyOwner {
-        require(_newInterval >= 30 days, "Interval too short");
+        require(_newInterval >= 7 days, "Interval too short");
         require(_newInterval <= 365 days, "Interval too long");
         rebaseInterval = _newInterval;
         emit RebaseIntervalUpdated(_newInterval);
+    }
+
+    /**
+     * @dev Allows the owner to set the upkeep reward amount.
+     * @param _newReward The new reward amount in C100 tokens.
+     */
+    function setUpkeepReward(uint256 _newReward) external onlyOwner {
+        upkeepReward = _newReward;
     }
 
     // =======================
@@ -650,41 +490,269 @@ contract COIN100 is ERC20, Ownable, Pausable, ReentrancyGuard, FunctionsClient, 
     }
 
     // =======================
-    // ====== AUTOMATION ======
+    // ====== UPKEEP =========
     // =======================
 
     /**
-     * @dev Chainlink Automation checkUpkeep function.
-     * This function is called by Chainlink nodes to check if upkeep is needed.
-     * It returns true if the rebase interval has passed.
-     * @return upkeepNeeded Whether upkeep is needed.
-     * @return performData Empty bytes.
+     * @dev Allows anyone to perform upkeep tasks manually.
+     * Requires that at least `rebaseInterval` has passed since the last upkeep.
+     * Rewards the caller with `upkeepReward` C100 tokens.
+     * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
      */
-    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
-        upkeepNeeded = (block.timestamp - lastRebaseTime) >= rebaseInterval;
-        // performData can be empty as we don't need to pass any specific data
-        performData = "";
+    function performUpkeep(uint256 _fetchedMarketCap) external nonReentrant {
+        require(block.timestamp >= lastRebaseTime + rebaseInterval, "Upkeep interval not reached");
+        require(_fetchedMarketCap > 0, "Invalid market cap");
+
+        // Update the total market cap
+        totalMarketCap = _fetchedMarketCap;
+
+        // Adjust the supply based on the new market cap
+        adjustSupply(_fetchedMarketCap);
+
+        // Update the last rebase time
+        lastRebaseTime = block.timestamp;
+
+        // Reward the caller
+        if (upkeepReward > 0 && balanceOf(address(this)) >= upkeepReward) {
+            _transfer(address(this), msg.sender, upkeepReward);
+            emit RewardsDistributed(msg.sender, upkeepReward);
+        }
+
+        emit UpkeepPerformed(msg.sender, block.timestamp);
+    }
+
+    // =======================
+    // ====== REBASE LOGIC ====
+    // =======================
+
+    /**
+     * @dev Adjusts the token supply based on the fetched market cap with rebase limits.
+     * @param fetchedMarketCap The latest total market cap in USD (6 decimals).
+     */
+    function adjustSupply(uint256 fetchedMarketCap) internal nonReentrant {
+        uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
+        uint256 currentC100MarketCap = (totalSupply() * currentPrice) / 1e6; // Adjusted scaling
+
+        // Compute Price Adjustment Factor (PAF)
+        uint256 paf = (fetchedMarketCap * 1e18) / currentC100MarketCap;
+
+        if (paf > 1e18 + (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% increase
+            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16); // 5% in 1e18 scale
+            uint256 mintAmount = (totalSupply() * rebaseFactor) / 1e18;
+            require(mintAmount <= MAX_MINT_AMOUNT, "Mint amount exceeds maximum");
+            _mint(address(this), mintAmount);
+            emit TokensMinted(mintAmount);
+        } else if (paf < 1e18 - (MAX_REBASE_PERCENT * 1e16)) { // Allow up to MAX_REBASE_PERCENT% decrease
+            uint256 rebaseFactor = (MAX_REBASE_PERCENT * 1e16);
+            uint256 burnAmount = (totalSupply() * rebaseFactor) / 1e18;
+            require(burnAmount <= MAX_BURN_AMOUNT, "Burn amount exceeds maximum");
+            _burn(address(this), burnAmount);
+            emit TokensBurned(burnAmount);
+        }
+
+        lastMarketCap = fetchedMarketCap;
+        emit PriceAdjusted(fetchedMarketCap, block.timestamp);
     }
 
     /**
-    * @dev Chainlink Automation performUpkeep function.
-    * This function is called by Chainlink nodes when checkUpkeep returns true.
-    * It performs the upkeep by requesting new market cap data and distributing rewards.
-    * @param performData Not used in this implementation.
+    * @dev Parses a string to a uint256.
+    * @param _a The string to parse.
+    * @return _parsed The parsed uint256.
     */
-    function performUpkeep(bytes calldata performData) external override {
-        // Check again to prevent multiple executions
-        if ((block.timestamp - lastRebaseTime) < rebaseInterval) {
-            return;
+    function parseInt(string memory _a) internal pure returns (uint256 _parsed) {
+        bytes memory bresult = bytes(_a);
+        uint256 result = 0;
+        uint256 decimalPlaces = 0;
+        bool decimalPointEncountered = false;
+        for (uint256 i = 0; i < bresult.length; i++) {
+            if (bresult[i] == ".") {
+                decimalPointEncountered = true;
+                continue;
+            }
+            if (uint8(bresult[i]) >= 48 && uint8(bresult[i]) <= 57) {
+                if (decimalPointEncountered) {
+                    if (decimalPlaces < 6) { // Limit to 6 decimal places (USDC has 6)
+                        result = result * 10 + (uint8(bresult[i]) - 48);
+                        decimalPlaces++;
+                    }
+                } else {
+                    result = result * 10 + (uint8(bresult[i]) - 48);
+                }
+            }
+        }
+        // Scale to 6 decimals instead of 18
+        if (decimalPlaces < 6) {
+            result = result * (10**(6 - decimalPlaces));
+        } else if (decimalPlaces > 6) {
+            result = result / (10**(decimalPlaces - 6));
+        }
+        return result;
+    }
+    
+    /**
+    * @dev Distributes rewards by updating the rewardPerTokenStored and allocating tokens to the rewards pool.
+    */
+    function distributeRewards() internal {
+        updateReward(address(0)); // Update global rewards
+
+        adjustRewardRate();
+
+        uint256 distributionAmount = rewardRate;
+
+        uint256 contractBalance = balanceOf(address(this));
+        uint256 availableForDistribution = contractBalance > totalRewards ? contractBalance - totalRewards : 0;
+
+        if (availableForDistribution < distributionAmount) {
+            distributionAmount = availableForDistribution;
         }
 
-        lastRebaseTime = block.timestamp;
-        requestMarketCapData();
-
-        // Distribute rewards to ensure the rewards pool is replenished
-        distributeRewards();
-
-        emit UpkeepPerformed(performData);
+        if (distributionAmount > 0) {
+            totalRewards -= distributionAmount; // Deduct from totalRewards
+            lastUpdateTime = block.timestamp;
+            emit RewardsReplenished(distributionAmount, block.timestamp);
+            
+            // Transfer rewards to a specific rewards pool or directly to users
+            // Example: _transfer(address(this), rewardsPool, distributionAmount);
+        }
     }
 
+    // =======================
+    // ====== REWARDS ========
+    // =======================
+
+    /**
+    * @dev Allows liquidity providers to claim their accumulated rewards.
+    * Users must hold LP tokens from the Uniswap pair to be eligible.
+    */
+    function claimRewards() external nonReentrant {
+        updateReward(msg.sender);
+
+        uint256 reward = rewards[msg.sender];
+        require(reward > 0, "No rewards available");
+
+        rewards[msg.sender] = 0;
+        totalRewards -= reward;
+
+        _transfer(address(this), msg.sender, reward);
+
+        emit RewardsDistributed(msg.sender, reward);
+    }
+
+    /**
+    * @dev Updates the reward variables to be up-to-date.
+    */
+    function updateReward(address account) internal {
+        rewardPerTokenStored = rewardPerToken();
+        if (account != address(0)) {
+            rewards[account] = earned(account);
+            userRewardPerTokenPaid[account] = rewardPerTokenStored;
+        }
+    }
+
+    /**
+    * @dev Calculates the current reward per token.
+    * @return The updated reward per token.
+    */
+    function rewardPerToken() public view returns (uint256) {
+        uint256 totalSupplyLP = IUniswapV2Pair(uniswapV2Pair).totalSupply();
+        if (totalSupplyLP == 0) {
+            return rewardPerTokenStored;
+        }
+        // Ensure no overflow and proper scaling
+        return
+            rewardPerTokenStored +
+            ((rewardRate * 1e18) / totalSupplyLP);
+    }
+
+    /**
+    * @dev Calculates the earned rewards for a user.
+    * @param account The address of the user.
+    * @return The amount of rewards earned by the user.
+    */
+    function earned(address account) public view returns (uint256) {
+        uint256 balance = IUniswapV2Pair(uniswapV2Pair).balanceOf(account);
+        if (balance == 0) {
+            return rewards[account];
+        }
+        return ((balance * (rewardPerTokenStored - userRewardPerTokenPaid[account])) / 1e18) + rewards[account];
+    }
+
+    /**
+    * @dev Adjusts the reward rate based on the current token price.
+    * Lower reward rate when the token price increases and vice versa.
+    */
+    function adjustRewardRate() internal {
+        uint256 currentPrice = getLatestPrice(); // Price with 6 decimals
+        uint256 newRewardRate;
+        
+        if (currentPrice < 1 * 1e6) { // Below $1
+            newRewardRate = 2000 * 1e18; // Highest rewards per rebase
+        } else if (currentPrice >= 1 * 1e6 && currentPrice < 5 * 1e6) { // $1 - $5
+            newRewardRate = 1500 * 1e18;
+        } else if (currentPrice >= 5 * 1e6 && currentPrice < 10 * 1e6) { // $5 - $10
+            newRewardRate = 1000 * 1e18;
+        } else { // $10 and above
+            newRewardRate = 500 * 1e18; // Lowest rewards per rebase
+        }
+        
+        // Apply bounds without additional scaling
+        if (newRewardRate > MAX_REWARD_RATE) {
+            newRewardRate = MAX_REWARD_RATE;
+        } else if (newRewardRate < MIN_REWARD_RATE) {
+            newRewardRate = MIN_REWARD_RATE;
+        }
+        
+        if (newRewardRate != rewardRate) {
+            rewardRate = newRewardRate;
+            emit RewardRateUpdated(newRewardRate, currentPrice);
+        }
+    }
+
+    // =======================
+    // ====== UPKEEP =========
+    // =======================
+
+    /**
+     * @dev Allows anyone to perform upkeep tasks manually.
+     * Requires that at least `rebaseInterval` has passed since the last upkeep.
+     * Rewards the caller with `upkeepReward` C100 tokens.
+     * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
+     */
+    function performUpkeep(uint256 _fetchedMarketCap) external nonReentrant {
+        require(block.timestamp >= lastRebaseTime + rebaseInterval, "Upkeep interval not reached");
+        require(_fetchedMarketCap > 0, "Invalid market cap");
+
+        // Update the total market cap
+        totalMarketCap = _fetchedMarketCap;
+
+        // Adjust the supply based on the new market cap
+        adjustSupply(_fetchedMarketCap);
+
+        // Update the last rebase time
+        lastRebaseTime = block.timestamp;
+
+        // Reward the caller
+        if (upkeepReward > 0 && balanceOf(address(this)) >= upkeepReward) {
+            _transfer(address(this), msg.sender, upkeepReward);
+            emit RewardsDistributed(msg.sender, upkeepReward);
+        }
+
+        emit UpkeepPerformed(msg.sender, block.timestamp);
+    }
+
+    // =======================
+    // ====== SECURITY ========
+    // =======================
+
+    /**
+    * @dev Overrides the ERC20 _beforeTokenTransfer hook to integrate Pausable functionality.
+    * @param from Address transferring tokens.
+    * @param to Address receiving tokens.
+    * @param amount Amount of tokens being transferred.
+    */
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override {
+        super._beforeTokenTransfer(from, to, amount);
+
+        require(!paused(), "ERC20Pausable: token transfer while paused");
+    }
 }
