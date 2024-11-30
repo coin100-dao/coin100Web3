@@ -37,6 +37,7 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     event USDCUpdated(address newUSDC);
     event UniswapV2RouterUpdated(address newUniswapV2Router);
     event MaticPriceFeedUpdated(address newPriceFeed);
+    event C100UsdPriceFeedUpdated(address newPriceFeed); // New Event for C100/USD Price Feed
 
     // =======================
     // ======= STATE =========
@@ -76,8 +77,9 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     // USDC Token Address
     address public USDC;
 
-    // Chainlink Price Feed for MATIC/USD
+    // Chainlink Price Feeds
     AggregatorV3Interface public maticUsdPriceFeed;
+    AggregatorV3Interface public c100UsdPriceFeed; // New Price Feed for C100/USD
 
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
@@ -96,14 +98,14 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
      * @param _wmatic Address of the WMATIC token.
      * @param _quickswapUniswapRouterAddress Address of the Uniswap V2 router.
      * @param _developerWallet Address of the developer wallet.
-     * @param _usdc Address of the USDC token.
+     * @param _usdcAddress Address of the USDC token.
      * @param _maticUsdPriceFeed Address of the Chainlink MATIC/USD price feed.
      */
     constructor(
         address _wmatic,
         address _quickswapUniswapRouterAddress, 
         address _developerWallet,
-        address _usdc,
+        address _usdcAddress,
         address _maticUsdPriceFeed
     )
         ERC20("COIN100", "C100")
@@ -112,11 +114,11 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         require(_wmatic != address(0), "Invalid WMATIC address");
         require(_developerWallet != address(0), "Invalid developer wallet");
         require(_quickswapUniswapRouterAddress != address(0), "Invalid Uniswap router address");
-        require(_usdc != address(0), "Invalid USDC address");
+        require(_usdcAddress != address(0), "Invalid USDC address");
         require(_maticUsdPriceFeed != address(0), "Invalid MATIC/USD price feed address");
 
         developerWallet = _developerWallet;
-        USDC = _usdc;
+        USDC = _usdcAddress;
         maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
 
         // Mint allocations
@@ -348,42 +350,59 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         emit MaticPriceFeedUpdated(_newPriceFeed);
     }
 
+    /**
+     * @dev Allows the owner to set or update the C100/USD price feed address.
+     *      Once set, the contract will use this direct price feed for price determination.
+     * @param _newC100UsdPriceFeed Address of the new Chainlink C100/USD price feed.
+     */
+    function setC100UsdPriceFeed(address _newC100UsdPriceFeed) external onlyOwner {
+        require(_newC100UsdPriceFeed != address(0), "Invalid C100/USD price feed address");
+        c100UsdPriceFeed = AggregatorV3Interface(_newC100UsdPriceFeed);
+        emit C100UsdPriceFeedUpdated(_newC100UsdPriceFeed);
+    }
+
     // =======================
     // ====== FUNCTIONS =======
     // =======================
 
     /**
-     * @dev Retrieves the latest price of C100 in USD by averaging prices from USDC and MATIC pairs.
+     * @dev Retrieves the latest price of C100 in USD.
+     *      - If a direct C100/USD price feed is available, it uses that.
+     *      - Otherwise, it derives the price using the C100/MATIC pair and the MATIC/USD price feed.
      * @return price The latest C100 price in USD with 6 decimals (USDC has 6 decimals).
      */
     function getLatestPrice() public view returns (uint256 price) {
-        uint256 priceUSDC = getPriceFromUSDC();
-        uint256 priceViaMATIC = getPriceFromMATIC();
-        price = (priceUSDC + priceViaMATIC) / 2;
+        if (address(c100UsdPriceFeed) != address(0)) {
+            // Directly fetch C100/USD price from Chainlink
+            price = getPriceFromC100UsdFeed();
+        } else {
+            // Derive price via C100/MATIC and MATIC/USD
+            price = getDerivedPriceFromMatic();
+        }
     }
 
     /**
-     * @dev Internal function to fetch the C100/USDC price from Uniswap.
-     * @return priceUSDC The price of C100 in USDC with 6 decimals.
+     * @dev Internal function to fetch the C100/USD price directly from the Chainlink price feed.
+     * @return price The price of C100 in USD with 6 decimals.
      */
-    function getPriceFromUSDC() internal view returns (uint256 priceUSDC) {
-        // Fetch C100/USDC price
-        address pairUSDC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), USDC);
-        require(pairUSDC != address(0), "C100/USDC pair does not exist");
-        IUniswapV2Pair pair1 = IUniswapV2Pair(pairUSDC);
-        (uint112 reserve0USDC, uint112 reserve1USDC, ) = pair1.getReserves();
-        address token0USDC = pair1.token0();
-        uint256 reserveC100_USDC = token0USDC == address(this) ? uint256(reserve0USDC) : uint256(reserve1USDC);
-        uint256 reserveUSDC = token0USDC == address(this) ? uint256(reserve1USDC) : uint256(reserve0USDC);
-        require(reserveC100_USDC > 0 && reserveUSDC > 0, "Uniswap reserves not available for USDC pair");
-        priceUSDC = (reserveUSDC * 1e6) / reserveC100_USDC;
+    function getPriceFromC100UsdFeed() internal view returns (uint256 price) {
+        (
+            ,
+            int256 priceInt,
+            ,
+            ,
+            
+        ) = c100UsdPriceFeed.latestRoundData();
+        require(priceInt > 0, "Invalid C100/USD price from oracle");
+        uint8 decimals = c100UsdPriceFeed.decimals();
+        price = uint256(priceInt) * (10 ** (6 - decimals)); // Adjust to 6 decimals
     }
 
     /**
-     * @dev Internal function to fetch the C100/MATIC price and convert it to USD using Chainlink.
-     * @return priceViaMATIC The price of C100 in USD derived via MATIC with 6 decimals.
+     * @dev Internal function to derive the C100/USD price using C100/MATIC and MATIC/USD prices.
+     * @return priceViaMATIC The derived price of C100 in USD with 6 decimals.
      */
-    function getPriceFromMATIC() internal view returns (uint256 priceViaMATIC) {
+    function getDerivedPriceFromMatic() internal view returns (uint256 priceViaMATIC) {
         // Fetch C100/MATIC price
         address pairMATIC = IUniswapV2Factory(uniswapV2Router.factory()).getPair(address(this), WMATIC);
         require(pairMATIC != address(0), "C100/MATIC pair does not exist");
