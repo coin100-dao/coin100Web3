@@ -1571,6 +1571,33 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         emit C100UsdPriceFeedUpdated(_newC100UsdPriceFeed);
     }
 
+    /**
+     * @dev Allows the admin (owner or governor) to perform upkeep tasks.
+     *      Restricted to onlyAdmin to prevent unauthorized calls.
+     *      Requires that at least `rebaseInterval` has passed since the last upkeep.
+     *      The admin provides the latest market cap, which is used to adjust the token supply.
+     * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
+     */
+    function performUpkeep(uint256 _fetchedMarketCap) external onlyAdmin nonReentrant {
+        // Ensure that the required time interval has passed since the last rebase
+        require(block.timestamp >= lastRebaseTime + rebaseInterval, "Upkeep interval not reached");
+
+        // Validate the fetched market cap value
+        require(_fetchedMarketCap > 0, "Invalid market cap");
+
+        // Update the total market cap with the provided value
+        totalMarketCap = _fetchedMarketCap;
+
+        // Adjust the token supply based on the new market cap
+        adjustSupply(_fetchedMarketCap);
+
+        // Update the last rebase time to the current timestamp
+        lastRebaseTime = block.timestamp;
+
+        // Emit an event indicating that upkeep has been performed by the admin
+        emit UpkeepPerformed(msg.sender, block.timestamp);
+    }
+
     // =======================
     // ====== FUNCTIONS =======
     // =======================
@@ -1813,37 +1840,5 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
             rewardRate = newRewardRate;
             emit RewardRateUpdated(newRewardRate, currentPrice);
         }
-    }
-
-    // =======================
-    // ====== UPKEEP =========
-    // =======================
-
-    /**
-     * @dev Allows anyone to perform upkeep tasks manually.
-     * Requires that at least `rebaseInterval` has passed since the last upkeep.
-     * Rewards the caller with `upkeepReward` C100 tokens.
-     * @param _fetchedMarketCap The latest total market cap in USD (6 decimals, matching USDC).
-     */
-    function performUpkeep(uint256 _fetchedMarketCap) external nonReentrant {
-        require(block.timestamp >= lastRebaseTime + rebaseInterval, "Upkeep interval not reached");
-        require(_fetchedMarketCap > 0, "Invalid market cap");
-
-        // Update the total market cap
-        totalMarketCap = _fetchedMarketCap;
-
-        // Adjust the supply based on the new market cap
-        adjustSupply(_fetchedMarketCap);
-
-        // Update the last rebase time
-        lastRebaseTime = block.timestamp;
-
-        // Reward the caller
-        if (upkeepReward > 0 && balanceOf(address(this)) >= upkeepReward) {
-            _transfer(address(this), msg.sender, upkeepReward);
-            emit RewardsDistributed(msg.sender, upkeepReward);
-        }
-
-        emit UpkeepPerformed(msg.sender, block.timestamp);
     }
 }
