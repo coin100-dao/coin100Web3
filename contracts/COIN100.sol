@@ -7,35 +7,29 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     event PriceAdj(uint256 newMCap, uint256 timestamp);
-    event TokensBurned(uint256 amount);
-    event TokensMinted(uint256 amount);
-    event FeesUpd(uint256 devFee, uint256 burnFee, uint256 rewardFee);
+    event FeesUpd(uint256 devFee, uint256 rewardFee);
     event FeePctUpd(uint256 newFeePct);
     event WalletsUpd(address devWallet);
     event RebaseIntvUpd(uint256 newIntv);
     event UpkeepDone(address indexed performer, uint256 timestamp);
     event RewardsDist(address indexed user, uint256 amount);
-    event RewardRateUpd(uint256 newRate, uint256 currPrice);
-    event RewardFeeUpd(uint256 newRewardFee);
+    event RewardRateUpd(uint256 newRate, uint256 currMcap);
+    event RewardFeeUpd(uint256 newReward);
     event RewardsRepl(uint256 amount, uint256 timestamp);
     event UniRouterUpd(address newRouter);
-    event MaticPriceFeedUpd(address newPriceFeed);
-    event C100UsdPriceFeedUpd(address newPriceFeed);
     event GovSet(address gov);
     event EligiblePairAdded(address pairAddr);
     event EligiblePairRemoved(address pairAddr);
 
-    uint256 public constant PRICE_DECIMALS = 6;
     uint256 public constant TOKEN_DECIMALS = 18;
-    uint256 public feePercent = 3;
-    uint256 public devFee = 40;
-    uint256 public burnFee = 40;
-    uint256 public rewardFee = 20;
+    uint256 public feePercent = 5; // 5 = 0.5% (fee applied on transfers)
+    uint256 public devFee = 10;    // 10% of fee portion
+    uint256 public rewardFee = 90; // 90% of fee portion
     uint256 public constant FEE_DIVISOR = 100;
+
     uint256 public rewardPerTokenStored;
     uint256 public lastUpdTime;
     uint256 public rewardRate = 1000 * 1e18;
@@ -44,23 +38,31 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     uint256 public constant MIN_REWARD_RATE = 500 * 1e18;
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 * 1e18;
     uint256 public lastMCap;
-    uint256 public constant MAX_REBASE_PCT = 5;
-    uint256 public constant MAX_MINT_AMT = 50_000_000 * 1e18;
-    uint256 public constant MAX_BURN_AMT = 50_000_000 * 1e18;
     uint256 public totalMCap;
     address public devWallet;
-    address public WMATIC;
     IUniswapV2Router02 public uniRouter;
     mapping(address => bool) public eligiblePairs;
     address[] public pairList;
-    AggregatorV3Interface public maticUsdPriceFeed;
-    AggregatorV3Interface public c100UsdPriceFeed;
+
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
+
     uint256 public lastRebaseTime;
-    uint256 public rebaseIntv = 7 days;
+    uint256 public rebaseIntv = 1 days;
     uint256 public upkeepReward = 10 * 1e18;
     address public governor;
+
+    // Rolling average MCap variables
+    uint256 public averagingPeriod = 7; 
+    uint256[] public mcapHistory;
+    uint256 public currentIndex = 0;
+
+    // scalingFactor: used to determine supply from MCap
+    // newSupply = (rollingAverageMcap * scalingFactor) / 1e18
+    uint256 public scalingFactor; 
+
+    // LP Reward Multiplier
+    uint256 public lpRewardMultiplier = 120; // LP gets 20% more rewards than normal holders
 
     modifier onlyAdmin() {
         if (governor == address(0)) {
@@ -72,19 +74,16 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     }
 
     constructor(
-        address _wmatic,
         address _uniRouterAddr,
-        address _devWallet,
-        address _maticUsdPriceFeed
+        address _devWallet
     ) ERC20("COIN100", "C100") Ownable(msg.sender) {
-        require(_wmatic != address(0), "WMATIC zero");
         require(_devWallet != address(0), "Dev wallet zero");
         require(_uniRouterAddr != address(0), "Router zero");
-        require(_maticUsdPriceFeed != address(0), "Price feed zero");
 
         devWallet = _devWallet;
-        maticUsdPriceFeed = AggregatorV3Interface(_maticUsdPriceFeed);
 
+        // Mint initial supply
+        // 90% to owner, 5% to dev, 5% to contract for rewards
         _mint(owner(), (TOTAL_SUPPLY * 90) / 100);
         _mint(devWallet, (TOTAL_SUPPLY * 5) / 100);
         _mint(address(this), (TOTAL_SUPPLY * 5) / 100);
@@ -95,10 +94,9 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         lastUpdTime = block.timestamp;
 
         uniRouter = IUniswapV2Router02(_uniRouterAddr);
-        WMATIC = _wmatic;
 
         address initialPair = IUniswapV2Factory(uniRouter.factory())
-            .createPair(address(this), WMATIC);
+            .createPair(address(this), uniRouter.WETH());
 
         require(initialPair != address(0), "Pair creation failed");
 
@@ -108,6 +106,9 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         pairList.push(initialPair);
     }
 
+    // -------------------
+    // Governance
+    // -------------------
     function setGov(address _gov) external onlyOwner {
         require(_gov != address(0), "Gov zero");
         require(governor == address(0), "Gov set");
@@ -115,6 +116,9 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         emit GovSet(_gov);
     }
 
+    // -------------------
+    // Transfers with Fee
+    // -------------------
     function transfer(address recipient, uint256 amount)
         public
         override
@@ -129,17 +133,13 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
             return super.transfer(recipient, amount);
         }
 
-        uint256 feeAmt = (amount * feePercent) / 100;
-        uint256 devFeeAmt = (feeAmt * devFee) / FEE_DIVISOR;
-        uint256 burnFeeAmt = (feeAmt * burnFee) / FEE_DIVISOR;
-        uint256 rewardFeeAmt = (feeAmt * rewardFee) / FEE_DIVISOR;
+        // feePercent=5 means 0.5%
+        uint256 feeAmt = (amount * feePercent) / 1000; 
+        uint256 devFeeAmt = (feeAmt * devFee) / 100; 
+        uint256 rewardFeeAmt = feeAmt - devFeeAmt; 
 
         if (devFeeAmt > 0) {
             super.transfer(devWallet, devFeeAmt);
-        }
-
-        if (burnFeeAmt > 0) {
-            _burn(sender, burnFeeAmt);
         }
 
         if (rewardFeeAmt > 0) {
@@ -164,17 +164,12 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
             return super.transferFrom(sender, recipient, amount);
         }
 
-        uint256 feeAmt = (amount * feePercent) / 100;
-        uint256 devFeeAmt = (feeAmt * devFee) / FEE_DIVISOR;
-        uint256 burnFeeAmt = (feeAmt * burnFee) / FEE_DIVISOR;
-        uint256 rewardFeeAmt = (feeAmt * rewardFee) / FEE_DIVISOR;
+        uint256 feeAmt = (amount * feePercent) / 1000; 
+        uint256 devFeeAmt = (feeAmt * devFee) / 100; 
+        uint256 rewardFeeAmt = feeAmt - devFeeAmt; 
 
         if (devFeeAmt > 0) {
             super.transferFrom(sender, devWallet, devFeeAmt);
-        }
-
-        if (burnFeeAmt > 0) {
-            _burn(sender, burnFeeAmt);
         }
 
         if (rewardFeeAmt > 0) {
@@ -187,25 +182,23 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         return super.transferFrom(sender, recipient, transferAmt);
     }
 
+    // -------------------
+    // Admin Functions
+    // -------------------
     function setFeePercent(uint256 _feePercent) external onlyAdmin {
-        require(_feePercent <= 100, "Fee >100%");
+        require(_feePercent <= 1000, "Fee >100%");
         feePercent = _feePercent;
         emit FeePctUpd(_feePercent);
     }
 
     function updFees(
         uint256 _devFee,
-        uint256 _burnFee,
         uint256 _rewardFee
     ) external onlyAdmin {
-        require(
-            _devFee + _burnFee + _rewardFee <= FEE_DIVISOR,
-            "Fees >100%"
-        );
+        require(_devFee + _rewardFee == 100, "Fees must total 100%");
         devFee = _devFee;
-        burnFee = _burnFee;
         rewardFee = _rewardFee;
-        emit FeesUpd(_devFee, _burnFee, _rewardFee);
+        emit FeesUpd(_devFee, _rewardFee);
     }
 
     function updWallets(address _devWallet) external onlyAdmin {
@@ -222,7 +215,7 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     }
 
     function updRebaseIntv(uint256 _newIntv) external onlyAdmin {
-        require(_newIntv >= 7 days, "Intv <7d");
+        require(_newIntv >= 1 days, "Intv <1d");
         require(_newIntv <= 365 days, "Intv >365d");
         rebaseIntv = _newIntv;
         emit RebaseIntvUpd(_newIntv);
@@ -231,30 +224,6 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
     function setUpkeepReward(uint256 _newReward) external onlyAdmin {
         upkeepReward = _newReward;
         emit RewardFeeUpd(_newReward);
-    }
-
-    function updMaticUsdPriceFeed(address _newPriceFeed) external onlyAdmin {
-        require(_newPriceFeed != address(0), "Price feed zero");
-        maticUsdPriceFeed = AggregatorV3Interface(_newPriceFeed);
-        emit MaticPriceFeedUpd(_newPriceFeed);
-    }
-
-    function setC100UsdPriceFeed(address _newC100UsdPriceFeed)
-        external
-        onlyAdmin
-    {
-        require(_newC100UsdPriceFeed != address(0), "Price feed zero");
-        c100UsdPriceFeed = AggregatorV3Interface(_newC100UsdPriceFeed);
-        emit C100UsdPriceFeedUpd(_newC100UsdPriceFeed);
-    }
-
-    function upkeep(uint256 _fetchedMCap) external onlyAdmin nonReentrant {
-        require(block.timestamp >= lastRebaseTime + rebaseIntv, "Intv !passed");
-        require(_fetchedMCap > 0, "MCap zero");
-        totalMCap = _fetchedMCap;
-        adjustSupply(_fetchedMCap);
-        lastRebaseTime = block.timestamp;
-        emit UpkeepDone(msg.sender, block.timestamp);
     }
 
     function addEligiblePair(address pairAddr) external onlyAdmin {
@@ -278,106 +247,101 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         emit EligiblePairRemoved(pairAddr);
     }
 
-    function getLatestPrice() public view returns (uint256 price) {
-        if (address(c100UsdPriceFeed) != address(0)) {
-            price = getPriceFromC100UsdFeed();
+    // -------------------
+    // Rolling Average Logic
+    // -------------------
+    function updateMcapHistory(uint256 newMCap) internal {
+        if (mcapHistory.length < averagingPeriod) {
+            mcapHistory.push(newMCap);
         } else {
-            address pairMATIC = IUniswapV2Factory(uniRouter.factory()).getPair(
-                address(this),
-                WMATIC
-            );
-            if (pairMATIC != address(0)) {
-                price = getDerivedPriceFromMatic(pairMATIC);
-            } else {
-                price = getDerivedPriceFromMaticUsd();
+            mcapHistory[currentIndex] = newMCap;
+            currentIndex = (currentIndex + 1) % averagingPeriod;
+        }
+    }
+
+    function getRollingAverageMcap() public view returns (uint256) {
+        require(mcapHistory.length > 0, "No MCap data");
+        uint256 sum = 0;
+        uint256 count = mcapHistory.length;
+        for (uint256 i = 0; i < count; i++) {
+            sum += mcapHistory[i];
+        }
+        return sum / count;
+    }
+
+    // -------------------
+    // Upkeep (Rebase) Logic
+    // -------------------
+    function upkeep(uint256 _fetchedMCap) external onlyAdmin nonReentrant {
+        require(block.timestamp >= lastRebaseTime + rebaseIntv, "Intv !passed");
+        require(_fetchedMCap > 0, "MCap zero");
+
+        updateMcapHistory(_fetchedMCap);
+        uint256 avgMCap = getRollingAverageMcap();
+
+        // If scalingFactor not set yet (i.e., first upkeep), initialize it
+        if (scalingFactor == 0) {
+            // initialSupply = totalSupply() = TOTAL_SUPPLY
+            // scalingFactor = (initialSupply * 1e18) / avgMCap
+            scalingFactor = (totalSupply() * 1e18) / avgMCap;
+        }
+
+        uint256 oldSupply = totalSupply();
+        uint256 newSupply = (avgMCap * scalingFactor) / 1e18;
+
+        if (newSupply > oldSupply) {
+            uint256 mintAmt = newSupply - oldSupply;
+            _mint(address(this), mintAmt); 
+        } else if (newSupply < oldSupply) {
+            uint256 burnAmt = oldSupply - newSupply;
+            _burn(address(this), burnAmt);
+        }
+
+        totalMCap = _fetchedMCap;
+        lastMCap = _fetchedMCap;
+        lastRebaseTime = block.timestamp;
+
+        emit UpkeepDone(msg.sender, block.timestamp);
+    }
+
+    // -------------------
+    // Reward Logic
+    // -------------------
+    function getTotalEffectiveSupply() internal view returns (uint256) {
+        uint256 totalLPBal = 0;
+        for (uint256 i = 0; i < pairList.length; i++) {
+            if (eligiblePairs[pairList[i]]) {
+                uint256 lpSupply = IUniswapV2Pair(pairList[i]).totalSupply();
+                totalLPBal += lpSupply;
             }
         }
+        uint256 effectiveSupply = totalSupply() + ((totalLPBal * lpRewardMultiplier) / 100);
+        return effectiveSupply;
     }
 
-    function getPriceFromC100UsdFeed() internal view returns (uint256 price) {
-        (, int256 priceInt, , , ) = c100UsdPriceFeed.latestRoundData();
-        require(priceInt > 0, "C100/USD price !valid");
-        uint8 decimals = c100UsdPriceFeed.decimals();
-        require(decimals <= PRICE_DECIMALS, "Price feed decimals >expected");
-        price = uint256(priceInt) * (10 ** (PRICE_DECIMALS - decimals));
-    }
-
-    function getDerivedPriceFromMatic(address pairMATIC)
-        internal
-        view
-        returns (uint256 priceViaMATIC)
-    {
-        IUniswapV2Pair pair = IUniswapV2Pair(pairMATIC);
-        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
-        address token0 = pair.token0();
-        uint256 reserveC100;
-        uint256 reserveMATIC;
-        if (token0 == address(this)) {
-            reserveC100 = uint256(reserve0);
-            reserveMATIC = uint256(reserve1);
-        } else {
-            reserveC100 = uint256(reserve1);
-            reserveMATIC = uint256(reserve0);
+    function getUserEffectiveBalance(address account) internal view returns (uint256) {
+        uint256 normalBal = balanceOf(account);
+        uint256 userLPBal = 0;
+        for (uint256 i = 0; i < pairList.length; i++) {
+            if (eligiblePairs[pairList[i]]) {
+                userLPBal += IUniswapV2Pair(pairList[i]).balanceOf(account);
+            }
         }
-
-        require(
-            reserveC100 > 0 && reserveMATIC > 0,
-            "Reserves !available"
-        );
-
-        (, int256 maticPriceInt, , , ) = maticUsdPriceFeed.latestRoundData();
-        require(maticPriceInt > 0, "MATIC/USD price !valid");
-        uint8 maticDecimals = maticUsdPriceFeed.decimals();
-        require(
-            maticDecimals <= PRICE_DECIMALS,
-            "Price feed decimals >expected"
-        );
-        uint256 maticPriceUSD = uint256(maticPriceInt) *
-            (10 ** (PRICE_DECIMALS - maticDecimals));
-
-        priceViaMATIC = (reserveMATIC * maticPriceUSD) / reserveC100;
+        uint256 effectiveBal = normalBal + ((userLPBal * lpRewardMultiplier) / 100);
+        return effectiveBal;
     }
 
-    function getDerivedPriceFromMaticUsd()
-        internal
-        view
-        returns (uint256 priceViaMATIC)
-    {
-        (, int256 maticPriceInt, , , ) = maticUsdPriceFeed.latestRoundData();
-        require(maticPriceInt > 0, "MATIC/USD price !valid");
-        uint8 maticDecimals = maticUsdPriceFeed.decimals();
-        require(
-            maticDecimals <= PRICE_DECIMALS,
-            "Price feed decimals >expected"
-        );
-        priceViaMATIC = uint256(maticPriceInt) *
-            (10 ** (PRICE_DECIMALS - maticDecimals));
-        priceViaMATIC = priceViaMATIC;
-    }
-
-    function adjustSupply(uint256 fetchedMCap) internal nonReentrant {
-        uint256 currPrice = getLatestPrice();
-        uint256 currC100MCap = (totalSupply() * currPrice) /
-            (10 ** TOKEN_DECIMALS);
-
-        uint256 paf = (fetchedMCap * 1e18) / currC100MCap;
-
-        if (paf > 1e18 + (MAX_REBASE_PCT * 1e16)) {
-            uint256 rebaseFactor = (MAX_REBASE_PCT * 1e16);
-            uint256 mintAmt = (totalSupply() * rebaseFactor) / 1e18;
-            require(mintAmt <= MAX_MINT_AMT, "Mint amt >max");
-            _mint(address(this), mintAmt);
-            emit TokensMinted(mintAmt);
-        } else if (paf < 1e18 - (MAX_REBASE_PCT * 1e16)) {
-            uint256 rebaseFactor = (MAX_REBASE_PCT * 1e16);
-            uint256 burnAmt = (totalSupply() * rebaseFactor) / 1e18;
-            require(burnAmt <= MAX_BURN_AMT, "Burn amt >max");
-            _burn(address(this), burnAmt);
-            emit TokensBurned(burnAmt);
+    function rewardPerToken() public view returns (uint256) {
+        uint256 effectiveSupply = getTotalEffectiveSupply();
+        if (effectiveSupply == 0) {
+            return rewardPerTokenStored;
         }
+        return rewardPerTokenStored + ((rewardRate * 1e18) / effectiveSupply);
+    }
 
-        lastMCap = fetchedMCap;
-        emit PriceAdj(fetchedMCap, block.timestamp);
+    function earned(address account) public view returns (uint256) {
+        uint256 effectiveBal = getUserEffectiveBalance(account);
+        return ((effectiveBal * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18) + rewards[account];
     }
 
     function distributeRewards() internal {
@@ -418,76 +382,38 @@ contract COIN100 is ERC20Pausable, Ownable, ReentrancyGuard {
         }
     }
 
-    function rewardPerToken() public view returns (uint256) {
-        uint256 totalSupplyLP = getTotalSupplyOfEligibleLPs();
-        if (totalSupplyLP == 0) {
-            return rewardPerTokenStored;
-        }
-        return
-            rewardPerTokenStored +
-            ((rewardRate * 1e18) / totalSupplyLP);
-    }
-
-    function earned(address account) public view returns (uint256) {
-        uint256 balance = getUserBalanceInEligibleLPs(account);
-        if (balance == 0) {
-            return rewards[account];
-        }
-        return
-            ((balance *
-                (rewardPerTokenStored - userRewardPerTokenPaid[account])) /
-                1e18) + rewards[account];
-    }
-
-    function getTotalSupplyOfEligibleLPs()
-        internal
-        view
-        returns (uint256 totalSupplyLP)
-    {
-        for (uint256 i = 0; i < pairList.length; i++) {
-            address pairAddr = pairList[i];
-            if (eligiblePairs[pairAddr]) {
-                totalSupplyLP += IUniswapV2Pair(pairAddr).totalSupply();
-            }
-        }
-    }
-
-    function getUserBalanceInEligibleLPs(address account)
-        internal
-        view
-        returns (uint256 totalBalance)
-    {
-        for (uint256 i = 0; i < pairList.length; i++) {
-            address pairAddr = pairList[i];
-            if (eligiblePairs[pairAddr]) {
-                totalBalance += IUniswapV2Pair(pairAddr).balanceOf(account);
-            }
-        }
-    }
-
     function adjustRewardRate() internal {
-        uint256 currPrice = getLatestPrice();
-        uint256 newRewardRate;
+        uint256 currMcap = getRollingAverageMcap();
 
-        if (currPrice < 1 * 1e6) {
-            newRewardRate = 2000 * 1e18;
-        } else if (currPrice >= 1 * 1e6 && currPrice < 5 * 1e6) {
-            newRewardRate = 1500 * 1e18;
-        } else if (currPrice >= 5 * 1e6 && currPrice < 10 * 1e6) {
-            newRewardRate = 1000 * 1e18;
+        // Production-ready logic for adjusting rewardRate based on MCap:
+        if (currMcap < 100_000_000e18) {
+            rewardRate = 2000 * 1e18; // Highest reward rate for very low MCap scenario
+        } else if (currMcap >= 100_000_000e18 && currMcap < 500_000_000e18) {
+            rewardRate = 1500 * 1e18; // Medium-high reward for moderate MCap
+        } else if (currMcap >= 500_000_000e18 && currMcap < 1_000_000_000e18) {
+            rewardRate = 1000 * 1e18; // Default reward rate for medium MCap
         } else {
-            newRewardRate = 500 * 1e18;
+            rewardRate = 500 * 1e18; // Minimum reward rate for very large MCap
         }
 
-        if (newRewardRate > MAX_REWARD_RATE) {
-            newRewardRate = MAX_REWARD_RATE;
-        } else if (newRewardRate < MIN_REWARD_RATE) {
-            newRewardRate = MIN_REWARD_RATE;
+        // Ensure rewardRate stays within min/max bounds
+        if (rewardRate > MAX_REWARD_RATE) {
+            rewardRate = MAX_REWARD_RATE;
+        } else if (rewardRate < MIN_REWARD_RATE) {
+            rewardRate = MIN_REWARD_RATE;
         }
 
-        if (newRewardRate != rewardRate) {
-            rewardRate = newRewardRate;
-            emit RewardRateUpd(newRewardRate, currPrice);
-        }
+        emit RewardRateUpd(rewardRate, currMcap);
+    }
+
+    // -------------------
+    // Pausable
+    // -------------------
+    function pause() external onlyAdmin {
+        _pause();
+    }
+
+    function unpause() external onlyAdmin {
+        _unpause();
     }
 }
