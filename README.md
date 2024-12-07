@@ -1,955 +1,558 @@
-## **Table of Contents**
-
-1. Introduction  
-2. Prerequisites  
-3. Setting Up the Development Environment  
-   * 3.1. Install Node.js and npm  
-   * 3.2. Initialize a New Node.js Project  
-   * 3.3. Install Development Dependencies  
-   * 3.4. Install Essential Libraries  
-4. Creating and Managing Wallets  
-   * 4.1. Choose a Wallet Provider  
-   * 4.2. Import and Rename Wallets  
-   * 4.3. Fund the Wallets on the Testnet  
-5. Writing the Solidity Smart Contracts  
-   * 5.1. Project Structure Overview  
-   * 5.2. Writing the COIN100 Token Contract  
-   * 5.3. Writing the COIN100 Developer Treasury Vesting Contract  
-   * 5.4. Writing the COIN100 Community Governance Contract  
-   * 5.5. Writing the COIN100 Staking Rewards Contract  
-6. Configuring Hardhat for Deployment  
-   * 6.1. Update `hardhat.config.js`  
-   * 6.2. Set Up Environment Variables  
-   * 6.3. Install Additional Dependencies  
-7. Deploying Contracts to the Amoy Testnet  
-   * 7.1. Writing Deployment Scripts  
-   * 7.2. Deploying Contracts  
-   * 7.3. Verify Deployments  
-8. Testing Smart Contracts on the Amoy Testnet  
-   * 8.1. Writing Unit Tests  
-   * 8.2. Running Unit Tests  
-   * 8.3. Manual Testing on Amoy Testnet  
-9. Managing and Securing Wallets  
-   * 9.1. Securing Private Keys  
-   * 9.2. Setting Up Multi-Signature Wallets  
-   * 9.3. Monitoring and Maintenance  
-10. Finalizing and Preparing for Mainnet Deployment  
-    * 10.1. Review and Optimize Contracts  
-    * 10.2. Update Configuration for Mainnet  
-    * 10.3. Deploy to Polygon Mainnet  
-    * 10.4. Post-Deployment Steps  
-11. Conclusion
-
----
-
-## **1\. Introduction**
-
-**COIN100** is a decentralized cryptocurrency index fund built on the Polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S\&P 500, COIN100 aims to provide a secure, transparent, and efficient investment vehicle for both novice and experienced crypto investors.
+# COIN100 (C100)
+****COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
 
 **Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
 
----
+**Contract Address:** [0xdbe819ddf0d14a54ffe611c6d070b32a7f9d23d1](https://polygonscan.com/token/0xdbe819ddf0d14a54ffe611c6d070b32a7f9d23d1)
 
-## **2\. Prerequisites**
+## Installation and Deployment
 
-Before starting the development process, ensure you have the following:
+### Local Development
+1. Clone the repository
+2. Install dependencies:
+```bash
+npm install
+```
+3. Create a `.env` file with the required environment variables
+4. Start the development server:
+```bash
+npm start
+```
 
-* **Basic Knowledge of:**  
-  * JavaScript/TypeScript  
-  * Solidity (Smart Contract Programming)  
-  * Blockchain Concepts  
-* **Tools Installed:**  
-  * **Node.js** (v14.x or later)  
-  * **npm** (Node Package Manager)  
-  * **MetaMask** (Browser Extension)  
-  * **Git** (Version Control)  
-* **Accounts:**  
-  * **Infura** or another RPC provider account for accessing Polygon's networks  
-  * **GitHub** account (optional, for version control and collaboration)
+### Production Deployment with PM2
+PM2 is used for process management in production. Here are the common commands:
 
----
+#### Starting/Restarting the Service
+```bash
+# Restart if exists, otherwise start new instance
+pm2 restart coin100-api || pm2 start /home/ec2-user/coin100Api/index.js --name "coin100-api"
+```
 
-## **3\. Setting Up the Development Environment**
+#### Monitoring
+```bash
+# View logs in real-time
+pm2 logs coin100-api
 
-### **3.1. Install Node.js and npm**
+# View last 1000 lines of logs
+pm2 logs coin100-api --lines 1000
 
-1. **Download Node.js:**  
-   * Visit the [official Node.js website](https://nodejs.org/) and download the LTS (Long Term Support) version suitable for your operating system.  
-2. **Install Node.js:**  
-   * Follow the installation instructions specific to your OS.  
-3. **Verify Installation:**
+# View dashboard
+pm2 monit
+```
 
-Open your terminal or command prompt and run:  
-bash  
-Copy code  
-`node -v`
+#### Other Useful PM2 Commands
+```bash
+# List all processes
+pm2 list
 
-`npm -v`
+# Stop the service
+pm2 stop coin100-api
 
-*   
-  * You should see the versions of Node.js and npm installed.
+# Delete the service
+pm2 delete coin100-api
 
-### **3.2. Initialize a New Node.js Project**
+# View process details
+pm2 show coin100-api
+```
 
-**Create a Project Directory:**  
-bash  
-Copy code  
-`mkdir coin100`
+## Table of Contents
 
-`cd coin100`
-
-1.   
-2. **Initialize npm:**
-
-This will create a `package.json` file to manage your project's dependencies.  
-bash  
-Copy code  
-`npm init -y`
-
-* 
-
-### **3.3. Install Development Dependencies**
-
-To develop smart contracts, you'll need a development environment and various libraries. We'll use **Hardhat**, a popular Ethereum development environment.
-
-**Install Hardhat:**  
-bash  
-Copy code  
-`npm install --save-dev hardhat`
-
-1. 
-
-**Initialize Hardhat in Your Project:**  
-bash  
-Copy code  
-`npx hardhat`
-
-2.   
-   * You'll be prompted with several options. Choose **"Create a basic sample project"** and follow the on-screen instructions.  
-   * This will set up a basic project structure with sample contracts, tests, and configuration files.
-
-### **3.4. Install Essential Libraries**
-
-Here are the key libraries you'll need for developing and deploying your smart contracts:
-
-1. **Ethers.js:**
-
-A library for interacting with the Ethereum blockchain.  
-bash  
-Copy code  
-`npm install --save ethers`
-
-*   
-2. **Hardhat Plugins:**
-
-**Hardhat Ethers:** Integrates Ethers.js with Hardhat.  
-bash  
-Copy code  
-`npm install --save-dev @nomiclabs/hardhat-ethers ethers`
-
-* 
-
-**Hardhat Waffle:** For smart contract testing.  
-bash  
-Copy code  
-`npm install --save-dev @nomiclabs/hardhat-waffle ethereum-waffle chai`
-
-* 
-
-**Dotenv:** To manage environment variables securely.  
-bash  
-Copy code  
-`npm install --save dotenv`
-
-*   
-3. **OpenZeppelin Contracts:**
-
-A library of secure and community-vetted smart contracts.  
-bash  
-Copy code  
-`npm install @openzeppelin/contracts`
-
-*   
-4. **Solidity Compiler:**
-
-Ensure compatibility with your smart contracts.  
-bash  
-Copy code  
-`npm install --save-dev solc`
-
-* 
+1. [Introduction](#introduction)
+2. [Problem Statement](#problem-statement)
+3. [Solution: COIN100 (C100) Token](#solution-coin100-c100-token)
+4. [Features](#features)
+    - [Decentralized Index Fund](#decentralized-index-fund)
+    - [Dynamic Rebase Mechanism](#dynamic-rebase-mechanism)
+    - [Automated Rewards Distribution](#automated-rewards-distribution)
+    - [Governance and Security](#governance-and-security)
+5. [Tokenomics](#tokenomics)
+    - [Total Supply](#total-supply)
+    - [Distribution](#distribution)
+    - [Transaction Fees](#transaction-fees)
+    - [Fee Allocation](#fee-allocation)
+6. [Technical Architecture](#technical-architecture)
+    - [Smart Contract Overview](#smart-contract-overview)
+    - [Price Feeds and Oracles](#price-feeds-and-oracles)
+    - [Uniswap Integration](#uniswap-integration)
+7. [Governance](#governance)
+8. [Security](#security)
+9. [Roadmap](#roadmap)
+10. [Team](#team)
+11. [Community and Social Media](#community-and-social-media)
+12. [Frequently Asked Questions (FAQ)](#frequently-asked-questions-faq)
+13. [Contact Information](#contact-information)
 
 ---
 
-## **4\. Creating and Managing Wallets**
+## Introduction
 
-Before diving into smart contract development, it's essential to set up and manage the necessary wallets that will control various aspects of the COIN100 ecosystem.
+The cryptocurrency market is renowned for its volatility and rapid growth. However, navigating this landscape can be challenging for both new and seasoned investors. Traditional financial instruments like index funds have provided a balanced and diversified investment approach in conventional markets. Drawing inspiration from these, **COIN100 (C100)** emerges as a decentralized cryptocurrency index fund built on the Polygon network, aiming to offer a similar diversified and stable investment vehicle in the crypto space.
 
-### **4.1. Choose a Wallet Provider**
+## Problem Statement
 
-For development and testing purposes, **MetaMask** is highly recommended due to its user-friendly interface and wide adoption.
+Investing in cryptocurrencies individually exposes investors to high volatility and risk associated with specific assets. Tracking and managing a diversified portfolio of top-performing cryptocurrencies manually is time-consuming and complex. Additionally, the lack of regulated and easily accessible index-based investment options in the crypto market limits opportunities for investors seeking balanced exposure.
 
-* **Download MetaMask:**  
-  * Visit the [MetaMask website](https://metamask.io/) and install the extension for your browser.
+## Solution: COIN100 (C100) Token
 
-### **4.2. Import and Rename Wallets**
+**COIN100 (C100)** addresses these challenges by offering a decentralized index fund that tracks the top 100 cryptocurrencies by market capitalization. By holding C100 tokens, investors gain diversified exposure to the leading cryptocurrencies, mitigating the risks associated with individual asset volatility. Built on the Polygon network, C100 ensures low transaction fees, high scalability, and robust security.
 
-Since you have specific wallet addresses for each role, you can import them directly into MetaMask if you have their private keys or seed phrases.
+## Features
 
-**Wallet Addresses for Reference:**
+### Decentralized Index Fund
 
-**COIN100 Owner Wallet:**  
-Copy code  
-`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`
+COIN100 represents the top 100 cryptocurrencies by market capitalization, providing a diversified portfolio that mirrors the overall crypto market's performance. This approach reduces the risk inherent in investing in individual cryptocurrencies and offers a balanced investment strategy.
 
-* 
+### Dynamic Rebase Mechanism
 
-**COIN100 Developer Treasury Wallet:**  
-Copy code  
-`0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`
+The C100 token incorporates a dynamic rebase mechanism that adjusts the token supply based on the total market capitalization. This ensures that the token remains a true reflection of the underlying index, maintaining its relevance and accuracy in tracking market movements.
 
-* 
+### Automated Rewards Distribution
 
-**COIN100 Liquidity Pool Wallet:**  
-Copy code  
-`0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`
+C100 holders are rewarded through an automated distribution system. A portion of transaction fees is allocated to rewards, incentivizing long-term holding and participation in the network. The reward rate adjusts based on the token's price, ensuring sustainability and alignment with market conditions.
 
-* 
+### Governance and Security
 
-**COIN100 Marketing Wallet:**  
-Copy code  
-`0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`
+The token leverages robust governance mechanisms, allowing designated governors to manage key parameters. Security features such as pausability, ownership controls, and protection against reentrancy attacks ensure the contract's integrity and resilience against potential threats.
 
-* 
+## Tokenomics
 
-**COIN100 Staking Rewards Wallet:**  
-Copy code  
-`0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`
+### Total Supply
 
-* 
+- **Total Supply:** 1,000,000,000 C100 tokens
+- **Decimals:** 18
 
-**COIN100 Reserve Wallet:**  
-Copy code  
-`0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`
+### Distribution
 
-* 
+- **Public Sale + Treasury:** 90% (900,000,000 C100)
+- **Developer Allocation:** 5% (50,000,000 C100)
+- **Rewards Pool:** 5% (50,000,000 C100)
 
-**COIN100 Community Treasury Wallet:**  
-Copy code  
-`0xYourCommunityTreasuryAddress`
+### Transaction Fees
 
-* *(Replace `0xYourCommunityTreasuryAddress` with the actual Community Treasury wallet address.)*
+- **Total Fee Percent:** 3% per transaction
+    - **Developer Fee:** 1.2% (40% of total fees)
+    - **Burn Fee:** 1.2% (40% of total fees)
+    - **Reward Fee:** 0.6% (20% of total fees)
 
-**Steps to Import Each Wallet:**
+### Fee Allocation
 
-1. **Import Wallet:**  
-   * In MetaMask, click on the account icon.  
-   * Select **"Import Account"**.  
-   * Choose **"Private Key"** or **"JSON File"** based on your available credentials.  
-   * Enter the private key or upload the JSON file for the respective wallet.  
-2. **Rename the Wallet:**  
-   * After importing, rename each account accordingly:  
-     * **COIN100 Owner**  
-     * **COIN100 Developer Treasury**  
-     * **COIN100 Liquidity Pool**  
-     * **COIN100 Marketing**  
-     * **COIN100 Staking Rewards**  
-     * **COIN100 Reserve**  
-     * **COIN100 Community Treasury**
+- **Developer Fee:** Allocated to the developer wallet for ongoing development and operational costs.
+- **Burn Fee:** Tokens are burned, reducing the total supply and potentially increasing the value of remaining tokens.
+- **Reward Fee:** Accumulated in the rewards pool and distributed to token holders based on their stake.
 
-### **4.3. Fund the Wallets on the Testnet**
+## Technical Architecture
 
-Before deploying contracts, ensure each wallet has sufficient testnet MATIC for gas fees.
+### Smart Contract Overview
 
-1. **Switch to the Amoy Testnet:**  
-   * In MetaMask, click on the network dropdown (default is "Ethereum Mainnet").  
-   * Select **"Amoy Testnet"**.  
-   * **Note:** If Amoy Testnet is not listed, you may need to add it manually by providing the network details.  
-2. **Obtain Test MATIC:**  
-   * Visit the Amoy Testnet Faucet *(Replace with the actual Amoy Testnet faucet URL)* to request test MATIC.  
-   * Enter each wallet address and request funds sequentially:  
-     * **COIN100 Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
-     * **COIN100 Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
-     * **COIN100 Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
-     * **COIN100 Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
-     * **COIN100 Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
-     * **COIN100 Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`  
-     * **COIN100 Community Treasury Wallet:** `0xYourCommunityTreasuryAddress` *(Replace `0xYourCommunityTreasuryAddress` with the actual Community Treasury wallet address.)*
+The C100 smart contract is built using Solidity ^0.8.20 and leverages OpenZeppelin's robust library for secure and efficient contract development. Key functionalities include:
 
----
+- **ERC20 Standard:** Ensures compatibility with existing wallets and exchanges.
+- **Pausable:** Allows the contract owner or governor to pause all token transfers in case of emergencies.
+- **Ownable:** Establishes ownership controls for administrative functions.
+- **ReentrancyGuard:** Protects against reentrancy attacks, enhancing contract security.
 
-## **5\. Writing the Solidity Smart Contracts**
+### Price Feeds and Oracles
 
-With wallets set up, the next step is to write the smart contracts that define the COIN100 token and its associated functionalities. We'll use **Hardhat** as our development environment and **OpenZeppelin** for secure contract templates.
+COIN100 integrates Chainlink's AggregatorV3Interface to obtain reliable price feeds for MATIC/USD and C100/USD. These oracles ensure accurate and tamper-proof pricing data, essential for the dynamic rebase mechanism and reward distribution.
 
-### **5.1. Project Structure Overview**
+### Uniswap Integration
 
-Your project directory (`coin100/`) should have the following structure after initializing Hardhat:
+The contract interacts with Uniswap V2's router and factory interfaces to manage liquidity pools and facilitate token swaps. By creating a pair with WMATIC, C100 ensures liquidity and enables seamless trading on decentralized exchanges.
 
-bash
+## Governance
 
-Copy code
+Governance is a critical aspect of COIN100, allowing for decentralized decision-making and adaptability. Initially, the contract owner has administrative control. However, a governor role can be set to transition governance to a dedicated address, promoting decentralization and community involvement. The governor can manage parameters such as fees, wallet addresses, router settings, and price feeds.
 
-`coin100/`
+## Security
 
-`├── contracts/`
+Security is paramount for COIN100. The contract incorporates multiple security measures:
 
-`│   ├── COIN100Token.sol`
+- **Pausable Functionality:** Enables halting of all transfers during suspicious activities or emergencies.
+- **Ownership Controls:** Restricts administrative functions to authorized entities.
+- **Reentrancy Protection:** Guards against reentrancy attacks, ensuring contract integrity.
+- **External Audits:** Regular audits by reputable firms are recommended to identify and mitigate vulnerabilities.
 
-`│   ├── COIN100DeveloperTreasury.sol`
+## Roadmap
 
-`│   ├── COIN100CommunityGovernance.sol`
+1. **Q1 2024:**  
+    - Smart contract development and internal testing.
+    - Community building and initial marketing campaigns.
+    - Deployment on the Polygon network.
+    - Listing on major DEXs.
 
-`│   └── COIN100StakingRewards.sol`
+2. **Q2 2024:**  
+    - Integration with Chainlink oracles.
+    - Launch of liquidity pools and staking mechanisms.
 
-`├── scripts/`
+3. **Q3 2024:**  
+    - Implementation of governance features.
+    - Expansion of reward distribution systems.
+    - Strategic partnerships and collaborations.
 
-`│   └── deploy.js`
+4. **Q4 2024:**  
+    - Launch of advanced features such as automated portfolio rebalancing.
+    - Continuous security audits and upgrades.
+    - Global marketing and user acquisition initiatives.
 
-`├── test/`
+## Team
 
-`│   └── COIN100Token.test.js`
+The COIN100 team comprises experienced professionals from blockchain development, finance, and marketing sectors. Our collective expertise ensures the successful development, deployment, and growth of the C100 token.
 
-`├── hardhat.config.js`
+*Details about the team members can be added here.*
 
-`├── package.json`
+## Community and Social Media
 
-`└── .env`
+Engage with the COIN100 community through our various social media channels:
 
+- **Website:** [https://coin100.link](https://coin100.link)
+- **Reddit:** [r/Coin100](https://www.reddit.com/r/Coin100)
+- **Discord:** [Join Our Discord](https://discord.com/channels/1312498183485784236/1312498184500674693)
+- **X:** [@Coin100token](https://x.com/Coin100token)
 
-## **6\. Configuring Hardhat for Deployment**
+Stay updated with the latest news, participate in discussions, and contribute to the future of COIN100.
 
-Before deploying the contracts, ensure that Hardhat is correctly configured to interact with the **Amoy Testnet**.
+## Frequently Asked Questions (FAQ)
 
-### **6.1. Update `hardhat.config.js`**
+### General
 
-Open `hardhat.config.js` and update it to include network configurations and necessary plugins.
+1. **What is COIN100 (C100)?**  
+   COIN100 (C100) is a decentralized cryptocurrency index fund built on the Polygon network, representing the top 100 cryptocurrencies by market capitalization.
 
-**hardhat.config.js**
+2. **How does COIN100 work?**  
+   C100 aggregates the top 100 cryptocurrencies, allowing holders to gain diversified exposure through a single token. The smart contract manages token distribution, fees, and rewards based on market dynamics.
 
-javascript
+3. **Why choose COIN100 over individual cryptocurrency investments?**  
+   C100 offers diversification, reducing the risk associated with individual assets. It simplifies portfolio management and mirrors the performance of the overall crypto market.
 
-Copy code
+4. **On which blockchain is COIN100 deployed?**  
+   COIN100 is deployed on the Polygon network, ensuring low transaction fees and high scalability.
 
-`require("@nomiclabs/hardhat-waffle");`
+5. **What are the benefits of holding C100 tokens?**  
+   Benefits include diversified exposure, participation in a dynamic index fund, rewards distribution, and potential token value appreciation through burn mechanisms.
 
-`require("@nomiclabs/hardhat-ethers");`
+### Tokenomics
 
-`require("dotenv").config();`
+6. **What is the total supply of C100 tokens?**  
+   The total supply is 1,000,000,000 C100 tokens.
 
-`module.exports = {`
+7. **How is the total supply of C100 distributed?**  
+   - 90% for Public Sale and Treasury  
+   - 5% for Developer Allocation  
+   - 5% for Rewards Pool
 
-  `solidity: "0.8.18",`
+8. **Are there any minting or burning mechanisms?**  
+   Yes, the contract includes burning mechanisms based on transaction fees and dynamic rebasing to adjust the total supply in response to market conditions.
 
-  `networks: {`
+9. **What are the transaction fees associated with C100?**  
+   A total fee of 3% per transaction is applied, divided into 1.2% for developers, 1.2% burned, and 0.6% allocated to rewards.
 
-    `amoy: { // Amoy Testnet configuration`
+10. **Can transaction fees be changed?**  
+    Yes, the admin (owner or governor) can update the fee percentages within defined limits through governance functions.
 
-      `url: process.env.AMOY_RPC_URL,`
+### Rewards
 
-      ``accounts: [`0x${process.env.PRIVATE_KEY}`],``
+11. **How are rewards distributed to C100 holders?**  
+    A portion of transaction fees is allocated to a rewards pool. Holders can claim their rewards based on their stake and participation in the liquidity pool.
 
-    `},`
+12. **What determines the reward rate?**  
+    The reward rate adjusts based on the token's price. Lower prices yield higher rewards to incentivize holding, while higher prices reduce rewards to maintain sustainability.
 
-  `},`
+13. **How often are rewards distributed?**  
+    Rewards are distributed upon successful upkeep operations, which are performed at least once every seven days.
 
-`};`
+14. **Can rewards be claimed automatically?**  
+    Currently, rewards must be claimed manually by holders through the `claimRewards` function in the smart contract.
 
-**Note:** Replace `"amoy"` with the correct network name if different. Ensure that Amoy Testnet is supported by your RPC provider.
+15. **What happens if there are insufficient rewards in the pool?**  
+    The contract ensures that only available rewards are distributed. If insufficient, the distribution amount is adjusted accordingly.
 
-### **6.2. Set Up Environment Variables**
+### Governance
 
-Create a `.env` file in the root directory to store sensitive information.
+16. **Who can govern the COIN100 protocol?**  
+    Initially, the contract owner has administrative control. Once a governor is set, governance shifts to the designated governor address.
 
-**.env**
+17. **Can the governor be changed?**  
+    The governor can be set only once by the owner and cannot be changed thereafter, ensuring a stable governance structure.
 
-env
+18. **What governance actions can the governor perform?**  
+    The governor can update fees, wallet addresses, router settings, price feeds, rebase intervals, and other critical parameters.
 
-Copy code
+19. **Is governance decentralized?**  
+    Governance is centralized initially but can transition to a more decentralized model by setting a governor, potentially allowing for community governance in the future.
 
-`AMOY_RPC_URL=https://amoy-testnet.rpc.url # Replace with the actual Amoy Testnet RPC URL`
+20. **Are there any governance tokens?**  
+    Currently, governance is managed through the C100 token holders and the designated governor, without a separate governance token.
 
-`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet (0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C)`
+### Technical
 
-**Important:**
+21. **Is the C100 smart contract audited?**  
+    Security audits are recommended and may be conducted by reputable firms to ensure contract integrity and safety.
 
-* **Never share your `.env` file or expose your private key.**  
-* Replace `https://amoy-testnet.rpc.url` with the actual RPC URL for the Amoy Testnet provided by your RPC provider.  
-* Replace `YOUR_PRIVATE_KEY` with the private key of your **COIN100 Owner Wallet** (`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`).
+22. **What security measures are in place?**  
+    The contract includes pausability, ownership controls, and reentrancy protection to safeguard against common vulnerabilities.
 
-### **6.3. Install Additional Dependencies**
+23. **Can the contract be paused?**  
+    Yes, authorized entities (owner or governor) can pause all token transfers in case of emergencies or suspicious activities.
 
-Ensure all necessary dependencies are installed.
+24. **How does the dynamic rebase mechanism work?**  
+    The contract adjusts the token supply based on the total market capitalization, minting or burning tokens within defined limits to maintain price stability.
 
-bash
+25. **What happens during a rebase?**  
+    If the market cap exceeds or falls below certain thresholds, the contract mints or burns tokens accordingly, ensuring the token remains a true representation of the index.
 
-Copy code
+### Market and Liquidity
 
-`npm install --save-dev @nomiclabs/hardhat-ethers @nomiclabs/hardhat-waffle ethers dotenv`
+26. **Where can I buy or sell C100 tokens?**  
+    C100 is available on major decentralized exchanges (DEXs) like Uniswap. Check the website for specific listings.
 
-`npm install @openzeppelin/contracts`
+27. **Is there a liquidity pool for C100?**  
+    Yes, a liquidity pool with WMATIC is created on Uniswap V2 to facilitate trading and ensure liquidity.
 
----
+28. **Can I provide liquidity to the C100 pool?**  
+    Yes, users can provide liquidity to the C100/WMATIC pair on Uniswap to earn fees and rewards.
 
-## **7\. Deploying Contracts to the Amoy Testnet**
+29. **What ensures liquidity for C100 tokens?**  
+    Initial liquidity is provided by the contract, and ongoing liquidity is maintained through user participation and strategic partnerships.
 
-With contracts written and Hardhat configured, proceed to deploy them to the **Amoy Testnet**.
+30. **Are there any incentives for providing liquidity?**  
+    Yes, liquidity providers may earn rewards from transaction fees and additional incentives from the rewards pool.
 
-### **7.1. Writing Deployment Scripts**
+### Usage and Integration
 
-Create a deployment script `deploy.js` in the `scripts/` directory.
+31. **Can C100 be integrated into other DeFi platforms?**  
+    Yes, C100 can be integrated into various DeFi applications, including lending platforms, yield aggregators, and portfolio management tools.
 
-**deploy.js**
+32. **Is there a staking mechanism for C100?**  
+    Currently, staking is managed through liquidity provision and rewards distribution. Future updates may include dedicated staking pools.
 
-javascript
+33. **How can I participate in the COIN100 ecosystem?**  
+    Participate by holding C100 tokens, providing liquidity, claiming rewards, and engaging in governance decisions.
 
-Copy code
+34. **Are there any partnerships planned for COIN100?**  
+    Strategic partnerships are part of the roadmap to enhance utility, liquidity, and adoption of C100.
 
-`const hre = require("hardhat");`
+35. **Can developers build on top of the C100 protocol?**  
+    Yes, developers can integrate C100 into their applications, leveraging its decentralized index fund features.
 
-`async function main() {`
+### Financial
 
-  `// Deploy COIN100Token`
+36. **How does the burn mechanism affect the token price?**  
+    Burning reduces the total supply, which can potentially increase the token's value by creating scarcity, assuming demand remains constant or increases.
 
-  `const COIN100Token = await hre.ethers.getContractFactory("COIN100Token");`
+37. **Is there a maximum cap on the number of tokens that can be burned?**  
+    The contract enforces maximum burn amounts per rebase to prevent excessive burning and maintain supply stability.
 
+38. **How are developer funds utilized?**  
+    Developer fees support ongoing development, maintenance, marketing, and operational expenses to ensure the project's sustainability.
 
-  `// Wallet Addresses`
+39. **Are there any vesting schedules for developer allocations?**  
+    Details about vesting schedules can be implemented to ensure long-term commitment from developers and prevent large sell-offs.
 
-  `const developerTreasury = "0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"; // COIN100 Developer Treasury`
+40. **Can fees be increased beyond the initial percentage?**  
+    Fees can be adjusted by the admin within predefined limits to balance between rewarding developers, burning tokens, and distributing rewards.
 
-  `const liquidityPool = "0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"; // COIN100 Liquidity Pool`
+### Community and Support
 
-  `const marketingWallet = "0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a"; // COIN100 Marketing`
+41. **How can I stay updated with COIN100 developments?**  
+    Follow our social media channels, join the Discord community, and subscribe to newsletters on our website.
 
-  `const stakingRewards = "0x3D8029660048e7E0a7bD04623802Ab815cc84CF8"; // COIN100 Staking Rewards`
+42. **Is there a referral or affiliate program?**  
+    Plans for referral programs may be introduced to incentivize community growth and engagement.
 
-  `const communityTreasury = "0xYourCommunityTreasuryAddress"; // COIN100 Community Treasury`
+43. **Where can I seek support or ask questions?**  
+    Join our Discord server, post on Reddit, or reach out through official communication channels listed on our website.
 
-  `const reserveWallet = "0xE51edf567dc8162d1EAe53764A864f34deB0DdE9"; // COIN100 Reserve Wallet`
+44. **Can I suggest features or improvements?**  
+    Yes, community feedback is valuable. Suggestions can be submitted through governance proposals or community forums.
 
-  `// Deploy COIN100Token`
+45. **Are there any community rewards or airdrops?**  
+    Periodic community rewards or airdrops may be conducted to reward active participants and promote engagement.
 
-  `const coin100 = await COIN100Token.deploy(`
+### Legal and Compliance
 
-    `developerTreasury,   // COIN100 Developer Treasury`
+46. **Is COIN100 compliant with regulations?**  
+    Compliance measures are implemented to adhere to relevant regulations. Legal counsel is consulted to ensure adherence to jurisdictional requirements.
 
-    `liquidityPool,       // COIN100 Liquidity Pool`
+47. **Are there any KYC/AML requirements for C100 holders?**  
+    Currently, there are no KYC/AML requirements for holding or transacting C100 tokens, promoting decentralization and accessibility.
 
-    `marketingWallet,     // COIN100 Marketing`
+48. **Can COIN100 be used in regulated financial products?**  
+    Integration with regulated financial products depends on jurisdictional approvals and compliance with relevant laws.
 
-    `stakingRewards,      // COIN100 Staking Rewards`
+49. **Is there a risk of regulatory changes affecting COIN100?**  
+    Regulatory landscapes are dynamic. The project continuously monitors and adapts to ensure compliance and mitigate risks.
 
-    `communityTreasury,   // COIN100 Community Treasury`
+50. **How is user privacy handled?**  
+    User privacy is maintained by adhering to best practices in smart contract development, ensuring no sensitive data is stored on-chain.
 
-    `reserveWallet        // COIN100 Reserve Wallet`
+### Future Developments
 
-  `);`
+51. **What are the future plans for COIN100?**  
+    Future developments include advanced governance mechanisms, expanded integrations with DeFi platforms, enhanced reward systems, and continuous security enhancements.
 
-  `await coin100.deployed();`
+52. **Will there be additional token utilities introduced?**  
+    Potential utilities may include staking rewards, governance voting power, and integration with other financial instruments.
 
-  `console.log("COIN100Token deployed to:", coin100.address);`
+53. **How will COIN100 adapt to market changes?**  
+    Through its dynamic rebase mechanism, governance flexibility, and responsive reward systems, COIN100 is designed to adapt to evolving market conditions.
 
-  `// Deploy COIN100DeveloperTreasury`
+54. **Are there plans to expand beyond the top 100 cryptocurrencies?**  
+    Future iterations may consider expanding the index to include more assets or introducing different indices based on specific criteria.
 
-  `const COIN100DeveloperTreasury = await hre.ethers.getContractFactory("COIN100DeveloperTreasury");`
+55. **Can COIN100 integrate with centralized exchanges?**  
+    Listings on centralized exchanges are part of the long-term strategy to enhance accessibility and liquidity.
 
-  `const developerTreasuryContract = await COIN100DeveloperTreasury.deploy(`
+### Miscellaneous
 
-    `coin100.address,`
+56. **What is the role of the Uniswap V2 Router in the C100 contract?**  
+    The Uniswap V2 Router facilitates token swaps, liquidity pool creation, and interactions with the Uniswap ecosystem, ensuring seamless trading experiences.
 
-    `hre.ethers.utils.parseUnits("100000000", 18) // 100,000,000 COIN100`
+57. **How does the contract handle price adjustments?**  
+    Price adjustments are managed through Chainlink price feeds and Uniswap reserve data, allowing the contract to accurately track and respond to market cap changes.
 
-  `);`
+58. **Is there a minimum holding period for C100 tokens?**  
+    There is no enforced minimum holding period, but rewards distribution incentivizes long-term holding.
 
-  `await developerTreasuryContract.deployed();`
+59. **How transparent is the COIN100 project?**  
+    The project emphasizes transparency through open-source smart contracts, regular updates, and active community engagement.
 
-  `console.log("COIN100DeveloperTreasury deployed to:", developerTreasuryContract.address);`
+60. **Can I integrate C100 into my own smart contract?**  
+    Yes, developers can interact with the C100 contract via its public interfaces to integrate its functionalities into their applications.
 
-  `// Deploy COIN100CommunityGovernance`
+### Technical Support
 
-  `const COIN100CommunityGovernance = await hre.ethers.getContractFactory("COIN100CommunityGovernance");`
+61. **What should I do if I encounter a bug or vulnerability?**  
+    Report any bugs or vulnerabilities through official channels like the Discord server or via email to the development team for prompt resolution.
 
-  `const communityGovernance = await COIN100CommunityGovernance.deploy(`
+62. **Are there any tools or dashboards to monitor C100 performance?**  
+    Tools and dashboards may be available on the website or through third-party integrations to track token performance, rewards, and market data.
 
-    `coin100.address,`
+63. **How are updates to the smart contract managed?**  
+    Updates are managed through governance decisions, ensuring that any changes are transparent and agreed upon by authorized entities.
 
-    `communityTreasury,`
+64. **Is the C100 contract upgradeable?**  
+    The current contract design does not support upgrades. Future versions may consider upgradeability through proxy patterns if deemed necessary.
 
-    `100 // Example: 100 required votes`
+65. **What programming standards does the C100 contract adhere to?**  
+    The contract follows Solidity best practices, adheres to the ERC20 standard, and utilizes OpenZeppelin's audited libraries for enhanced security.
 
-  `);`
+### Investment
 
-  `await communityGovernance.deployed();`
+66. **Is COIN100 a good investment?**  
+    As with all investments, especially in the cryptocurrency space, potential investors should conduct thorough research and consider risks before investing.
 
-  `console.log("COIN100CommunityGovernance deployed to:", communityGovernance.address);`
+67. **What are the potential risks associated with C100?**  
+    Risks include market volatility, smart contract vulnerabilities, regulatory changes, and liquidity challenges.
 
-  `// Deploy COIN100StakingRewards`
+68. **How can I assess the performance of C100?**  
+    Performance can be tracked through market data on exchanges, the project's website, and community dashboards that display key metrics.
 
-  `const COIN100StakingRewards = await hre.ethers.getContractFactory("COIN100StakingRewards");`
+69. **Does COIN100 have any insurance or protection mechanisms?**  
+    Currently, there are no insurance mechanisms. Security measures are in place to protect against common vulnerabilities.
 
-  `const stakingRewardsContract = await COIN100StakingRewards.deploy(`
+70. **Can I earn dividends from C100 holdings?**  
+    Rewards distribution acts similarly to dividends, where a portion of transaction fees is allocated to holders based on their stake.
 
-    `coin100.address,`
+### Integration with Traditional Finance
 
-    `coin100.address // Staking COIN100`
+71. **Can C100 be used as collateral in DeFi lending platforms?**  
+    Integration with lending platforms depends on the platform's support for C100 tokens. Future collaborations may enable such use cases.
 
-  `);`
+72. **Is there a way to convert C100 tokens to fiat?**  
+    Through exchanges that support fiat gateways, users can convert C100 tokens to fiat currencies, depending on platform availability.
 
-  `await stakingRewardsContract.deployed();`
+73. **Can institutional investors participate in C100?**  
+    Yes, institutional investors can acquire C100 tokens through supported exchanges and participate in the ecosystem's benefits.
 
-  `console.log("COIN100StakingRewards deployed to:", stakingRewardsContract.address);`
+### Miscellaneous
 
-`}`
+74. **How is the developer wallet secured?**  
+    The developer wallet employs multi-signature mechanisms and secure storage practices to protect funds and prevent unauthorized access.
 
-`main()`
+75. **Are there any tax implications for holding or trading C100?**  
+    Tax obligations vary by jurisdiction. Users should consult with tax professionals to understand their specific responsibilities.
 
-  `.then(() => process.exit(0))`
+76. **Can I recover my tokens if I lose access to my wallet?**  
+    No, token recovery is not possible without access to the private keys. Users are advised to secure their wallets diligently.
 
-  `.catch((error) => {`
+77. **Does COIN100 support multiple languages?**  
+    The project aims to support multiple languages in documentation and community channels to cater to a global audience.
 
-    `console.error("Error deploying contracts:", error);`
+78. **How does COIN100 compare to other crypto index funds?**  
+    COIN100 differentiates itself through its dynamic rebase mechanism, integration with Polygon for scalability, and a robust rewards system.
 
-    `process.exit(1);`
+79. **Are there any partnership opportunities with COIN100?**  
+    Potential partners can reach out through official channels to explore collaboration opportunities that enhance the ecosystem.
 
-  `});`
+80. **How does the rebase interval affect token supply?**  
+    The rebase interval determines how frequently the token supply can be adjusted based on market cap changes, maintaining the token's alignment with the index.
 
-**Explanation:**
+81. **Is there a limit to how much I can earn in rewards?**  
+    Rewards are proportionate to the stake and participation. There is no predefined cap, but sustainability is maintained through dynamic adjustments.
 
-* **Wallet Addresses:**  
-  1. **COIN100 Owner Wallet:** `0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`  
-  2. **COIN100 Developer Treasury Wallet:** `0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60`  
-  3. **COIN100 Liquidity Pool Wallet:** `0x799f59a724Cc6a745083cE8A160ba7D13FD471A0`  
-  4. **COIN100 Marketing Wallet:** `0x9Bb4346295797f5d38A1F18FDfe946e372A7be4a`  
-  5. **COIN100 Staking Rewards Wallet:** `0x3D8029660048e7E0a7bD04623802Ab815cc84CF8`  
-  6. **COIN100 Reserve Wallet:** `0xE51edf567dc8162d1EAe53764A864f34deB0DdE9`  
-  7. **COIN100 Community Treasury Wallet:** `0xYourCommunityTreasuryAddress` *(Replace with actual address)*  
-* **Deployment Steps:**  
-  1. **COIN100Token:** Deploys the main token contract with specified allocations.  
-  2. **COIN100DeveloperTreasury:** Deploys the vesting contract for the COIN100 Developer Treasury with a total allocation of 100,000,000 COIN100.  
-  3. **COIN100CommunityGovernance:** Deploys the governance contract for the COIN100 Community Treasury, requiring 100 votes to execute proposals.  
-  4. **COIN100StakingRewards:** Deploys the staking rewards contract, allowing users to stake COIN100 tokens to earn rewards.
+82. **Can I use C100 tokens in NFT marketplaces?**  
+    If NFT marketplaces support ERC20 tokens on Polygon, C100 can potentially be used, subject to marketplace integration.
 
-### **7.2. Deploying Contracts**
+83. **How does the contract handle extreme market conditions?**  
+    The dynamic rebase mechanism and fee adjustments help the contract adapt to extreme volatility, ensuring stability and alignment with the market.
 
-1. **Ensure Testnet MATIC Availability:**  
-   * Verify that your **COIN100 Owner Wallet** (`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`) has sufficient testnet MATIC on the Amoy Testnet for deployment costs.
+84. **Is there a maximum number of tokens I can hold?**  
+    No, there is no maximum holding limit. Users can acquire as many C100 tokens as they desire, subject to market availability.
 
-**Run the Deployment Script:**  
-bash  
-Copy code  
-`npx hardhat run scripts/deploy.js --network amoy`
+85. **How does COIN100 ensure compliance with DeFi standards?**  
+    By adhering to established ERC20 standards, integrating with reputable oracles like Chainlink, and following best security practices.
 
-2.   
-3. **Output:**  
-   * Upon successful deployment, the console will display the deployed contract addresses.
+86. **Are there any hidden fees associated with C100?**  
+    All fees are transparently defined in the smart contract and can be reviewed by users before participation.
 
-vbnet  
-Copy code  
-`COIN100Token deployed to: 0x...`
+87. **Can I transfer my C100 tokens to another blockchain?**  
+    Currently, C100 is deployed on Polygon. Bridging to other blockchains would require integration with cross-chain protocols.
 
-`COIN100DeveloperTreasury deployed to: 0x...`
+88. **How is the developer wallet funded?**  
+    Developer fees from transaction allocations provide ongoing funding for development and operational expenses.
 
-`COIN100CommunityGovernance deployed to: 0x...`
+89. **Does COIN100 have a mobile application?**  
+    Future developments may include mobile integrations for easier access and management of C100 tokens.
 
-`COIN100StakingRewards deployed to: 0x...`
+90. **Can I participate in governance without holding C100 tokens?**  
+    Governance participation typically requires holding C100 tokens, aligning voting power with stake.
 
-4. 
+91. **How does the contract ensure fair distribution of rewards?**  
+    Rewards are distributed based on the proportion of tokens held and participation in liquidity pools, ensuring fairness and alignment with contributions.
 
-### **7.3. Verify Deployments**
+92. **What happens if the market cap data is incorrect?**  
+    Reliance on Chainlink oracles ensures accurate data. In case of discrepancies, the contract includes safeguards to prevent manipulation.
 
-1. **Check on Amoy Testnet Explorer:**  
-   * Visit the Amoy Testnet blockchain explorer *(Replace with the actual Amoy Testnet explorer URL)*.  
-   * Enter the deployed contract addresses to view contract details and verify successful deployment.
+93. **Is there a vesting period for tokens acquired through rewards?**  
+    Currently, there is no vesting period, allowing immediate access to earned rewards.
 
----
+94. **How does COIN100 handle token swaps and liquidity provision?**  
+    Through integration with Uniswap V2, facilitating seamless swaps and liquidity management directly within the smart contract.
 
-## **8\. Testing Smart Contracts on the Amoy Testnet**
+95. **Can I delegate my rewards to another address?**  
+    The current contract does not support delegation. Rewards must be claimed and managed by the holder.
 
-Thorough testing ensures that all functionalities work as intended before deploying to the mainnet.
+96. **Are there any plans for a mobile wallet integration?**  
+    Future plans may include partnerships with mobile wallet providers to enhance accessibility and user experience.
 
-### **8.1. Writing Unit Tests**
+97. **How can I participate in the initial token sale?**  
+    Details about the initial token sale can be found on the official website and through official communication channels.
 
-Create a test file `COIN100Token.test.js` in the `test/` directory.
+98. **What measures are in place to prevent market manipulation?**  
+    The dynamic rebase mechanism, combined with decentralized governance, helps mitigate risks of market manipulation.
 
-**COIN100Token.test.js**
+99. **Can I use C100 tokens for online purchases?**  
+    Acceptance depends on merchant integrations. As adoption grows, more platforms may accept C100 as a payment method.
 
-javascript
+100. **How does COIN100 differentiate itself in the competitive crypto market?**  
+    Through its unique dynamic rebase mechanism, robust governance structure, and comprehensive rewards system, C100 offers a balanced and innovative approach to cryptocurrency index funds.
 
-Copy code
+## Contact Information
 
-`const { expect } = require("chai");`
+For further inquiries, support, or to engage with the COIN100 team, please reach out through the following channels:
 
-`const { ethers } = require("hardhat");`
-
-`describe("COIN100Token", function () {`
-
-  `let COIN100Token;`
-
-  `let coin100;`
-
-  `let owner;`
-
-  `let addr1;`
-
-  `let addr2;`
-
-  `let developerTreasury;`
-
-  `let liquidityPool;`
-
-  `let marketingWallet;`
-
-  `let stakingRewards;`
-
-  `let communityTreasury;`
-
-  `let reserveWallet;`
-
-  `beforeEach(async function () {`
-
-    `[owner, addr1, addr2, developerTreasury, liquidityPool, marketingWallet, stakingRewards, communityTreasury, reserveWallet] = await ethers.getSigners();`
-
-    `COIN100Token = await ethers.getContractFactory("COIN100Token");`
-
-    `coin100 = await COIN100Token.deploy(`
-
-      `developerTreasury.address, // COIN100 Developer Treasury`
-
-      `liquidityPool.address,     // COIN100 Liquidity Pool`
-
-      `marketingWallet.address,   // COIN100 Marketing`
-
-      `stakingRewards.address,    // COIN100 Staking Rewards`
-
-      `communityTreasury.address,// COIN100 Community Governance`
-
-      `reserveWallet.address      // COIN100 Reserve Wallet`
-
-    `);`
-
-    `await coin100.deployed();`
-
-  `});`
-
-  `it("Should have correct total supply", async function () {`
-
-    `expect(await coin100.totalSupply()).to.equal(ethers.utils.parseUnits("1000000000", 18));`
-
-  `});`
-
-  `it("Should allocate tokens correctly upon deployment", async function () {`
-
-    `const publicSaleAmount = ethers.utils.parseUnits("500000000", 18);`
-
-    `const developerAmount = ethers.utils.parseUnits("100000000", 18);`
-
-    `const liquidityAmount = ethers.utils.parseUnits("200000000", 18);`
-
-    `const marketingAmount = ethers.utils.parseUnits("70000000", 18);`
-
-    `const stakingAmount = ethers.utils.parseUnits("50000000", 18);`
-
-    `const communityAmount = ethers.utils.parseUnits("30000000", 18);`
-
-    `const reserveAmount = ethers.utils.parseUnits("50000000", 18);`
-
-    `expect(await coin100.balanceOf(owner.address)).to.equal(publicSaleAmount);`
-
-    `expect(await coin100.balanceOf(developerTreasury.address)).to.equal(developerAmount);`
-
-    `expect(await coin100.balanceOf(liquidityPool.address)).to.equal(liquidityAmount);`
-
-    `expect(await coin100.balanceOf(marketingWallet.address)).to.equal(marketingAmount);`
-
-    `expect(await coin100.balanceOf(stakingRewards.address)).to.equal(stakingAmount);`
-
-    `expect(await coin100.balanceOf(communityTreasury.address)).to.equal(communityAmount);`
-
-    `expect(await coin100.balanceOf(reserveWallet.address)).to.equal(reserveAmount);`
-
-  `});`
-
-  `it("Should apply transfer fees correctly", async function () {`
-
-    `// Owner transfers 1000 tokens to addr1`
-
-    `await coin100.transfer(addr1.address, ethers.utils.parseUnits("1000", 18));`
-
-    `// Calculate expected fees`
-
-    `const transferFee = ethers.utils.parseUnits("3", 18); // 0.3% of 1000`
-
-    `const developerFee = ethers.utils.parseUnits("0.6", 18); // 0.2% of 1000`
-
-    `const liquidityFee = ethers.utils.parseUnits("0.48", 18); // 0.16% of 1000`
-
-    `const communityFee = ethers.utils.parseUnits("0.36", 18); // 0.12% of 1000`
-
-    `const receivedAmount = ethers.utils.parseUnits("997", 18); // 1000 - 3`
-
-    `expect(await coin100.balanceOf(addr1.address)).to.equal(receivedAmount);`
-
-    `expect(await coin100.balanceOf(developerTreasury.address)).to.equal(ethers.utils.parseUnits("100000000", 18).add(developerFee));`
-
-    `expect(await coin100.balanceOf(liquidityPool.address)).to.equal(ethers.utils.parseUnits("200000000", 18).add(liquidityFee));`
-
-    `expect(await coin100.balanceOf(communityTreasury.address)).to.equal(ethers.utils.parseUnits("30000000", 18).add(communityFee));`
-
-  `});`
-
-  `it("Should allow owner to update fees", async function () {`
-
-    `// Update transfer fee to 0.5%`
-
-    `await coin100.updateTransferFee(50); // 0.5%`
-
-    `// Verify update`
-
-    `expect(await coin100.transferFee()).to.equal(50);`
-
-  `});`
-
-  `it("Should prevent non-owner from updating fees", async function () {`
-
-    `await expect(`
-
-      `coin100.connect(addr1).updateTransferFee(50)`
-
-    `).to.be.revertedWith("Ownable: caller is not the owner");`
-
-  `});`
-
-`});`
-
-**Explanation:**
-
-* **Test Cases:**  
-  * **Total Supply:** Verifies that the total supply is correctly set to 1,000,000,000 COIN100.  
-  * **Allocation:** Checks that tokens are allocated correctly to each designated wallet upon deployment.  
-  * **Transfer Fees:** Ensures that transfer fees are correctly applied and distributed to the respective wallets.  
-  * **Fee Management:** Validates that only the owner can update transfer fees and that unauthorized attempts are reverted.
-
-### **8.2. Running Unit Tests**
-
-Execute the tests using Hardhat:
-
-bash
-
-Copy code
-
-`npx hardhat test`
-
-**Expected Output:**
-
-All tests should pass, indicating that the contract behaves as expected.
-
-scss
-
-Copy code
-
- `COIN100Token`
-
-    `✔ Should have correct total supply (XXX ms)`
-
-    `✔ Should allocate tokens correctly upon deployment (XXX ms)`
-
-    `✔ Should apply transfer fees correctly (XXX ms)`
-
-    `✔ Should allow owner to update fees (XXX ms)`
-
-    `✔ Should prevent non-owner from updating fees (XXX ms)`
-
-  `5 passing (X.Xs)`
-
-### **8.3. Manual Testing on Amoy Testnet**
-
-Beyond automated tests, it's beneficial to perform manual testing to interact with deployed contracts.
-
-#### **8.3.1. Interacting via Hardhat Console**
-
-**Open Hardhat Console:**  
-bash  
-Copy code  
-`npx hardhat console --network amoy`
-
-1. 
-
-**Interact with COIN100Token:**  
-javascript  
-Copy code  
-`const [owner, addr1, addr2] = await ethers.getSigners();`
-
-`const COIN100Token = await ethers.getContractFactory("COIN100Token");`
-
-`const coin100 = await COIN100Token.attach("DEPLOYED_COIN100_ADDRESS"); // Replace with actual COIN100Token address`
-
-`// Check balances`
-
-`const ownerBalance = await coin100.balanceOf(owner.address);`
-
-`console.log("Owner Balance:", ethers.utils.formatUnits(ownerBalance, 18));`
-
-`// Transfer tokens`
-
-`await coin100.transfer(addr1.address, ethers.utils.parseUnits("1000", 18));`
-
-`const addr1Balance = await coin100.balanceOf(addr1.address);`
-
-`console.log("Addr1 Balance:", ethers.utils.formatUnits(addr1Balance, 18));`
-
-2.   
-3. **Verify Fee Distribution:**  
-   * Check the balances of COIN100 Developer Treasury, Liquidity Pool, and Community Treasury to ensure fees are correctly distributed.
-
-javascript  
-Copy code  
-`const developerTreasuryBalance = await coin100.balanceOf("0x4f2ee2Cf708F6641d5C7e6aD3128d15d91d15e60"); // COIN100 Developer Treasury`
-
-`const liquidityPoolBalance = await coin100.balanceOf("0x799f59a724Cc6a745083cE8A160ba7D13FD471A0"); // COIN100 Liquidity Pool`
-
-`const communityTreasuryBalance = await coin100.balanceOf("0xYourCommunityTreasuryAddress"); // COIN100 Community Governance`
-
-`console.log("Developer Treasury Balance:", ethers.utils.formatUnits(developerTreasuryBalance, 18));`
-
-`console.log("Liquidity Pool Balance:", ethers.utils.formatUnits(liquidityPoolBalance, 18));`
-
-`console.log("Community Treasury Balance:", ethers.utils.formatUnits(communityTreasuryBalance, 18));`
-
-4. 
-
-#### **8.3.2. Using Amoy Testnet Explorer Interface**
-
-1. **View Transactions:**  
-   * Navigate to the contract address on the Amoy Testnet blockchain explorer *(Replace with the actual Amoy Testnet explorer URL)*.  
-   * Review transactions to ensure proper functionality.  
-2. **Interact with Contracts:**  
-   * Use the **"Write Contract"** and **"Read Contract"** tabs to manually invoke and verify contract functions.
-
----
-
-## **9\. Managing and Securing Wallets**
-
-Proper wallet management is crucial for the security and smooth operation of the COIN100 ecosystem.
-
-### **9.1. Securing Private Keys**
-
-1. **Store Securely:**  
-   * Use hardware wallets (e.g., Ledger, Trezor) for storing private keys of critical wallets like COIN100 Developer Treasury and COIN100 Community Governance.  
-2. **Backup:**  
-   * Ensure that seed phrases are backed up securely and are not stored digitally.  
-3. **Access Control:**  
-   * Limit access to private keys to essential personnel only.  
-   * Consider using multi-signature wallets for high-value accounts.
-
-### **9.2. Setting Up Multi-Signature Wallets**
-
-For enhanced security, especially for Treasury wallets, consider implementing multi-signature (multi-sig) wallets.
-
-1. **Choose a Multi-Sig Solution:**  
-   * **Gnosis Safe** is a popular choice on the Polygon network.  
-2. **Deploy Multi-Sig Wallet:**  
-   * Visit [Gnosis Safe](https://gnosis-safe.io/) and create a new Safe on the Amoy Testnet.  
-   * Define the required number of signatures (e.g., 2 out of 3\) for transactions.  
-3. **Assign Roles:**  
-   * Assign trusted team members as signatories for critical wallets.  
-4. **Integrate with Contracts:**  
-   * Update the smart contracts to interact with the multi-sig wallets instead of individual addresses.  
-   * For example, set the `communityTreasury` address in `COIN100CommunityGovernance` to the multi-sig wallet address.
-
-### **9.3. Monitoring and Maintenance**
-
-1. **Use Wallet Management Tools:**  
-   * Tools like **Zerion** or **Debank** can help monitor wallet balances and activities.  
-2. **Regular Audits:**  
-   * Periodically audit wallets to ensure no unauthorized transactions have occurred.  
-3. **Emergency Protocols:**  
-   * Establish protocols for recovering funds or pausing contract interactions in case of emergencies.
-
----
-
-## **10\. Finalizing and Preparing for Mainnet Deployment**
-
-After successful testing on the Amoy Testnet, prepare for deploying to the Polygon Mainnet.
-
-### **10.1. Review and Optimize Contracts**
-
-1. **Code Review:**  
-   * Conduct thorough code reviews to identify and fix potential vulnerabilities.  
-2. **Optimize Gas Usage:**  
-   * Refactor contracts to minimize gas consumption where possible.  
-3. **Security Audits:**  
-   * Engage reputable third-party auditors to review your smart contracts.
-
-### **10.2. Update Configuration for Mainnet**
-
-**Modify `hardhat.config.js`:**  
-javascript  
-Copy code  
-`module.exports = {`
-
-  `solidity: "0.8.18",`
-
-  `networks: {`
-
-    `polygon: {`
-
-      `url: process.env.POLYGON_RPC_URL,`
-
-      ``accounts: [`0x${process.env.PRIVATE_KEY}`],``
-
-    `},`
-
-    `amoy: {`
-
-      `url: process.env.AMOY_RPC_URL,`
-
-      ``accounts: [`0x${process.env.PRIVATE_KEY}`],``
-
-    `},`
-
-  `},`
-
-`};`
-
-1.   
-2. **Set Mainnet RPC URL and Private Key:**  
-   * Update the `.env` file with `POLYGON_RPC_URL` and ensure the private key corresponds to a secure mainnet wallet.
-
-**.env**  
-env  
-Copy code  
-`POLYGON_RPC_URL=https://polygon-mainnet.rpc.url # Replace with actual Polygon Mainnet RPC URL`
-
-`AMOY_RPC_URL=https://amoy-testnet.rpc.url # Replace with actual Amoy Testnet RPC URL`
-
-`PRIVATE_KEY=YOUR_PRIVATE_KEY # Private key of the COIN100 Owner Wallet (0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C)`
-
-3. 
-
-### **10.3. Deploy to Polygon Mainnet**
-
-1. **Fund Mainnet Wallet:**  
-   * Ensure your **COIN100 Owner Wallet** (`0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C`) has sufficient MATIC for deployment costs.
-
-**Run Deployment Script:**  
-bash  
-Copy code  
-`npx hardhat run scripts/deploy.js --network polygon`
-
-2.   
-3. **Verify Deployment:**  
-   * Check the contract addresses on [Polygonscan](https://polygonscan.com/).
-
-### **10.4. Post-Deployment Steps**
-
-1. **Verify Contracts on Polygonscan:**  
-   * Use Hardhat's verification plugin or manually verify contracts for transparency.  
-2. **Set Up Frontend Interface:**  
-   * Develop a user-friendly frontend to interact with the COIN100 ecosystem.  
-   * Consider using frameworks like React.js along with libraries like Ethers.js or Web3.js.  
-3. **Announce Launch:**  
-   * Communicate the mainnet deployment to your community through official channels such as your website, social media, and cryptocurrency forums.
-
-   * 
-
+- **Website:** [https://coin100.link](https://coin100.link)
+- **Email:** [support@coin100.link](mailto:support@coin100.link)
+- **Discord:** [Join Our Discord](https://discord.com/channels/1312498183485784236/1312498184500674693)
+- **Reddit:** [r/Coin100](https://www.reddit.com/r/Coin100)
+- **X:** [@Coin100token](https://x.com/Coin100token)

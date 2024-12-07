@@ -1,5 +1,0 @@
-coin100-604394:~/coin100{master}$ npx hardhat run scripts/deployAmoy.js --network amoy
-Deploying COIN100 contract to Amoy Testnet with:
-Developer Wallet: 0xa3fa9aB4a8f9a98f6E4a2AD3Ce56964243cE9e8d
-Liquidity Wallet: 0x8a823C6506eE5aB3d2eD641Ca25838431F3ecA4C
-COIN100 deployed to Amoy Testnet at: 0x7ae1463D1bb3543D8b35DDfa136b2Fd716068A0b
