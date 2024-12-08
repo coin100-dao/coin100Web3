@@ -1,0 +1,33 @@
+# COIN100 (C100)
+****COIN100** is a decentralized cryptocurrency index fund built on the polygon network. It represents the top 100 cryptocurrencies by market capitalization, offering users a diversified portfolio that mirrors the performance of the overall crypto market. Inspired by traditional index funds like the S&P 500, COIN100
+
+**Ultimate Goal:** To dynamically track and reflect the top 100 cryptocurrencies by market capitalization, ensuring that COIN100 remains a relevant and accurate representation of the cryptocurrency market.
+
+review the logic in our numbers 
+in other ways .. audit the idea of our new index fund 
+
+review the logic in our numbers 
+in other ways .. audit the idea of our new index fund 
+we will set the initial price of the coin to 0.001
+the supply adjustment 
+the amount we mint and burn 
+does the numbers make sense ? 
+is this goin to be sustainable ? 
+how would the price of token be related to market data of token and other Dex activity ?
+how would the price change when new coins are added to the index ?
+how would the price change when new coins are removed from the index ?
+does the price of token depend on the price of the underlying coins ?
+and if it it does ... how would the price change when the price of the underlying coins change ?
+like if i own $100 worth of C100 tokens ... how would the price change when total market cap to top 100 increase ? wpould that make my holdings less valuable ?
+how to sustain the value ? whats fair ? 
+does it reflect the idea of index fund tracking total 100 coins in market cap ? 
+you'll notice every logical flaw in every number in the code and think of future scenarios on why this might be a good or bad idea or if it just needs modification and then be perfect 
+also focus on finding the flaws in the supply rebase mechanism and how it affects the price ... think of the users .. assume 1000 wallets are out there ... think of all the scenarios ... 
+and each flaw you provide .. discuss it ... give cons and pros ... how it might be improved .... and suggesst a new approach or a new modification
+
+we need to audit this to be the perfect index fund tracker of all times ... simple way but elegant and accurate
+
+so dont write the full code yet ... i just want you to give me a new modified plan for tokenomics  completely vetting the process
+After full review and vetting and issue finding and solution suggestion (dont make it complex ) give me a full plan with a genius formula for everything 
+Full cohesive comprehensive well thought out plann
+Need the most dynamic contract even audited for the perfect formula 
