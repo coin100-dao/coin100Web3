@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -72,6 +72,7 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     bool public buybackEnabled = true;
     uint256 public buybackPortion = 5000; // 50% of USDC spent on each buyback
     uint256 public constant MAX_PCT = 10000;
+    address[] public path = new address[](2);
 
     // --------------------------------------
     // Events
@@ -100,7 +101,7 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
         address _factory,
         address _wMatic,
         address _usdc
-    ) {
+    ) Ownable(_msgSender()) Pausable() ReentrancyGuard() {
         require(initialMCap > 0, "initial MCap zero");
         require(_router != address(0) && _factory != address(0), "zero router/factory");
         require(_wMatic != address(0) && _usdc != address(0), "zero token addr");
@@ -242,11 +243,14 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     // Buyback Logic
     // --------------------------------------
     function _performBuyback(uint256 amountToSpend) internal {
+        // Approve the router to spend USDC
         IERC20(usdcAddress).approve(routerAddress, amountToSpend);
-        address[] memory path = new address[](2);
+        
+        // Declare and initialize the path array
         path[0] = usdcAddress;
         path[1] = address(this);
 
+        // Execute the token swap
         IRouter(routerAddress).swapExactTokensForTokens(
             amountToSpend,
             0, 
@@ -255,12 +259,13 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
             block.timestamp
         );
 
+        // Calculate the balance of COIN100 tokens obtained from the swap
         uint256 c100Bal = balanceOf(address(this));
         if (c100Bal > 0) {
             uint256 gonBal = c100Bal * gonsPerFragment;
             _gonBalances[address(this)] -= gonBal;
 
-            // Burn by sending to address(0)
+            // Burn the tokens by sending them to the zero address
             emit Transfer(address(this), address(0), c100Bal);
             // No need to adjust TOTAL_GONS; burning effectively reduces circulating supply as tokens vanish.
         }
@@ -329,13 +334,6 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
 
     function unpause() external onlyOwner {
         _unpause();
-    }
-
-    // --------------------------------------
-    // Context Override
-    // --------------------------------------
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
     }
 
     // --------------------------------------
