@@ -13,12 +13,18 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * 
  * Tokenomics at Deployment:
  * - Total supply = initialMarketCap (M0)
- * - 3% of total supply is the owner's allocation (as appreciation for upkeep).
- * - 97% of total supply is also assigned to the owner at launch (so total 100% to owner).
- *   The owner can then provide liquidity on a DEX or distribute tokens as desired.
+ * - 3% of total supply is the owner's allocation (as appreciation for initial upkeep).
+ * - 97% of total supply also assigned to the owner at launch (total 100% to owner).
+ *   Owner can distribute or sell these tokens (e.g., via ICO contract).
  *
- * Over time, the owner will perform manual rebases by calling `rebase(newMCap)`,
- * adjusting everyone's balances proportionally based on changes in the top 100 market cap.
+ * Daily/periodic manual rebases:
+ * - The owner or, later, a governor contract can call `rebase(newMCap)` to update the supply
+ *   proportionally based on the top 100 market cap.
+ *   
+ * Governance Transition:
+ * - Initially, the owner is the admin who controls key parameters and rebases.
+ * - In the future, a governor contract will be set, transferring these admin rights.
+ * - After setting the governor contract, it will share or take over admin functions.
  */
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // ---------------------------------------
@@ -36,12 +42,21 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 constant MAX_GONS = type(uint256).max / 1e18;
     uint256 private _gonsPerFragment;     // Gons per fragment scaling factor
 
-    mapping(address => uint256) private _gonsBalances; // Balances in gons
+    mapping(address => uint256) private _gonsBalances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    // Owner and Liquidity allocations
+    // Initial allocations
     uint256 public ownerAllocation;       // 3% of total supply
     uint256 public remainingAllocation;   // The other 97%
+
+    // Governor contract address (initially none)
+    address public govContract;
+
+    // Future parameters (placeholders for community governance):
+    // These could be parameters that the community might want to adjust in the future.
+    uint256 public rebaseFrequency;       // How often upkeep can be called (in seconds or blocks)
+    uint256 public someFutureParameter;   // Example of a configurable parameter.
+    bool public transfersWithFee;         // Example toggling fee on transfers if implemented in future.
 
     // ---------------------------------------
     // Events
@@ -49,6 +64,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
+    event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
 
     // ---------------------------------------
     // Constructor
@@ -60,7 +76,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _totalSupply = initialMarketCap;
         lastMarketCap = initialMarketCap;
 
-        // Calculate owner and remaining allocations
+        // Calculate owner allocations
         ownerAllocation = (_totalSupply * 3) / 100;          // 3%
         remainingAllocation = _totalSupply - ownerAllocation; // 97%
 
@@ -68,11 +84,28 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _gonsPerFragment = MAX_GONS / _totalSupply;
 
         // Mint entire supply to owner
-        // This includes both the 3% owner allocation and the 97% intended for liquidity or distribution.
         uint256 totalGons = _totalSupply * _gonsPerFragment;
         _gonsBalances[owner()] = totalGons;
 
         emit Transfer(address(0), owner(), _totalSupply);
+
+        // Initialize future parameters with sensible defaults
+        rebaseFrequency = 1 days;        // Default: can rebase once per day if desired
+        someFutureParameter = 0;         // No special parameter set yet
+        transfersWithFee = false;        // No transfer fee initially
+    }
+
+    // ---------------------------------------
+    // Modifiers
+    // ---------------------------------------
+    modifier onlyAdmin() {
+        // only owner if no govContract set, else govContract or owner
+        require(
+            msg.sender == owner() || 
+            (govContract != address(0) && msg.sender == govContract),
+            "Not admin"
+        );
+        _;
     }
 
     // ---------------------------------------
@@ -128,6 +161,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         require(to != address(0), "To zero");
         require(balanceOf(from) >= amount, "Balance too low");
 
+        // If we had a fee mechanism, we could apply it here if transfersWithFee is true.
+        // For now, no actual fee logic, just a placeholder.
+        // E.g., if transfersWithFee, take a small percentage of `amount` and send to treasury.
+        
         uint256 gonsAmount = amount * _gonsPerFragment;
         _gonsBalances[from] -= gonsAmount;
         _gonsBalances[to] += gonsAmount;
@@ -149,7 +186,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @notice Manually update the market cap and rebase all balances.
      * @param newMarketCap The new total market cap of top 100 cryptos.
      */
-    function rebase(uint256 newMarketCap) external onlyOwner nonReentrant whenNotPaused {
+    function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Mcap must be > 0");
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
@@ -161,7 +198,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 newSupply = (oldSupply * ratioScaled) / 1e18;
         require(newSupply > 0, "New supply must be > 0");
 
-        // Update gonsPerFragment
         _gonsPerFragment = MAX_GONS / newSupply;
 
         _totalSupply = newSupply;
@@ -171,15 +207,61 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     // ---------------------------------------
-    // Owner Controls
+    // Admin Functions (Owner or Governor)
     // ---------------------------------------
-    function pause() external onlyOwner {
+
+    /**
+     * @notice Set the governor contract address. Once set, both owner and gov contract share admin rights.
+     * @param _govContract The address of the new governor contract.
+     */
+    function setGovernorContract(address _govContract) external onlyOwner {
+        address oldGov = govContract;
+        govContract = _govContract;
+        emit GovernorContractSet(oldGov, _govContract);
+    }
+
+    /**
+     * @notice Pause the contract (pauses transfers, approvals, etc.)
+     * Future governance could call this if needed.
+     */
+    function pauseContract() external onlyAdmin {
         _pause();
     }
 
-    function unpause() external onlyOwner {
+    /**
+     * @notice Unpause the contract.
+     */
+    function unpauseContract() external onlyAdmin {
         _unpause();
     }
+
+    /**
+     * @notice Update the rebase frequency. For future use if we want to enforce time constraints.
+     * @param newFrequency The new frequency parameter (e.g. in seconds).
+     */
+    function setRebaseFrequency(uint256 newFrequency) external onlyAdmin {
+        rebaseFrequency = newFrequency;
+    }
+
+    /**
+     * @notice Update a generic future parameter that might represent any governance-controlled setting.
+     * @param newParam The new value of the future parameter.
+     */
+    function setSomeFutureParameter(uint256 newParam) external onlyAdmin {
+        someFutureParameter = newParam;
+    }
+
+    /**
+     * @notice Enable or disable transfer fees (if implemented in the future).
+     * @param enabled True to enable, false to disable.
+     */
+    function setTransfersWithFee(bool enabled) external onlyAdmin {
+        transfersWithFee = enabled;
+    }
+
+    // Additional future functions could be added here as placeholders for what the gov contract
+    // might control: changing fee rates, directing minted tokens to a treasury, setting 
+    // oracles (once automated), or even changing references for the index composition.
 
     // ---------------------------------------
     // Fallback Functions
