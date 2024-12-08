@@ -27,7 +27,24 @@ and each flaw you provide .. discuss it ... give cons and pros ... how it might 
 
 we need to audit this to be the perfect index fund tracker of all times ... simple way but elegant and accurate
 
-so dont write the full code yet ... i just want you to give me a new modified plan for tokenomics  completely vetting the process
-After full review and vetting and issue finding and solution suggestion (dont make it complex ) give me a full plan with a genius formula for everything 
-Full cohesive comprehensive well thought out plann
-Need the most dynamic contract even audited for the perfect formula 
+
+
+ok 
+- minting for public sale and devloper llcoation should happen only once on deployment
+- we need a genius formula for the supply and price thats also simple and affective and represent a true index fund tracker and benifit holders as well
+- need to come up with a genius approch to minting and burning or maybe rethink it 
+- we dont need oracles autoamted logic now ... we can have admin do it for intiial phase ... admin is owner of contract untill we set the governor contract that'll come in the future .. but the intial phase we allow admin functinoality to owner till gov is set ... community will choose that new gov contract later
+- we'll do manual upkeep ( if the new genius approach needs upkeep ... you choose) in the intiial phase at least 
+- If the price of underlying coins goes up 20%, the top 100 market cap goes up 20%. In a truly index-like mechanism, each holder’s share of the index should reflect this gain, come up with a genius formula for that
+- address Sustainability and Fairness Concerns with a new genius formula where all holders scale together ... should be simple and not complex and easy to implement 
+- Full Rebase Mechanism for All Holders (please no oracle ... for now manual upkeep for that) , Instead of selectively minting/burning tokens to or from the owner/public sale address, use a global rebase approach ...On each update, if the top 100 mcap has grown by X%, increase everyone’s balance by X%. If it drops by Y%, reduce everyone’s balance by Y% ensuring every holder always represents a stable fraction of the index. The token price might stay around a reference peg (like $1), and the supply changes reflect the index’s performance ... please give real life production ready logic numbers .. no examples here pls
+- for marekt cap data ... will still be provided manually till we set a gov
+- on launch lets give fixed percentage to owner ... and do we need public sale address. ? people should be able to freely buy this easily ... dont want controlled public sale 
+
+
+think of all the points .... list the full white paper for this project contract here with all the points discussed ... fully audited plan for the contract .. .full production ready plan with full well thought out numbers, forumals and algorithm and functionalities and features 
+make sure everything logically and cohesivly work together to make the project successfull
+
+
+then after that you'll write the full new code ... the full code for our project should be in one contract 
+
