@@ -24,8 +24,7 @@ interface IRouter {
 
 /// @title COIN100: Automated Rebase & Buyback Token
 /// @notice This contract:
-///  - Starts with an initial supply all in the owner's wallet (developer initial mint).
-///  - Simulates market cap growth internally (no external aggregator needed).
+///  - Simulates market cap growth internally.
 ///  - Automatically rebases supply to match a target price.
 ///  - Detects liquidity pairs (C100/MATIC, C100/USDC) from a given factory on Polygon.
 ///  - Charges a small transaction fee and allows deposit of USDC to fund buybacks.
