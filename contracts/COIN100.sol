@@ -55,7 +55,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Future parameters (placeholders for community governance):
     // These could be parameters that the community might want to adjust in the future.
     uint256 public rebaseFrequency;       // How often upkeep can be called (in seconds or blocks)
-    uint256 public someFutureParameter;   // Example of a configurable parameter.
     bool public transfersWithFee;         // Example toggling fee on transfers if implemented in future.
 
     // ---------------------------------------
@@ -91,7 +90,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Initialize future parameters with sensible defaults
         rebaseFrequency = 1 days;        // Default: can rebase once per day if desired
-        someFutureParameter = 0;         // No special parameter set yet
         transfersWithFee = false;        // No transfer fee initially
     }
 
@@ -241,14 +239,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      */
     function setRebaseFrequency(uint256 newFrequency) external onlyAdmin {
         rebaseFrequency = newFrequency;
-    }
-
-    /**
-     * @notice Update a generic future parameter that might represent any governance-controlled setting.
-     * @param newParam The new value of the future parameter.
-     */
-    function setSomeFutureParameter(uint256 newParam) external onlyAdmin {
-        someFutureParameter = newParam;
     }
 
     /**
