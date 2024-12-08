@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title COIN100: Dynamic Market Cap-Tracking Token
 /// @notice This contract adjusts its total supply based on the total market cap of the top 100 cryptocurrencies.
-/// It allocates 3% of the supply to the developer and 97% to the owner. Supply adjustments are performed manually by the owner.
+/// It allocates 3% of the supply to the owner and 97% to a public sale address. Supply adjustments are performed manually by the owner.
 contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     // --------------------------------------
     // Token Metadata
@@ -23,49 +23,53 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     uint256 public scalingFactor = 1_000_000; // Scaling factor S = 1e6
 
     uint256 private _totalSupply;
-    uint256 public developerAllocation; // 3% of total supply
-    uint256 public ownerAllocation;     // 97% of total supply
+    uint256 public ownerAllocation;      // 3% of total supply
+    uint256 public publicSaleAllocation; // 97% of total supply
 
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
     // --------------------------------------
-    // Developer Address
+    // Addresses
     // --------------------------------------
-    address public developer;
+    address public publicSaleAddress;
 
     // --------------------------------------
     // Events
     // --------------------------------------
     event SupplyAdjusted(uint256 newTotalSupply, uint256 timestamp);
-    event DeveloperSet(address developer);
+    event PublicSaleAddressSet(address indexed publicSaleAddress);
     event ScalingFactorUpdated(uint256 newScalingFactor);
 
     // --------------------------------------
     // Constructor
     // --------------------------------------
     /// @param initialMCap The initial total market cap of the top 100 cryptocurrencies in USD.
-    /// @param _developer The address to receive the 3% developer allocation.
-    constructor(uint256 initialMCap, address _developer) Ownable(msg.sender) Pausable() ReentrancyGuard() {
+    /// @param _publicSaleAddress The address designated to hold the 97% public sale allocation.
+    constructor(uint256 initialMCap, address _publicSaleAddress)
+        Ownable(msg.sender)
+        Pausable()
+        ReentrancyGuard()
+    {
         require(initialMCap > 0, "Initial market cap must be greater than zero");
-        require(_developer != address(0), "Developer address cannot be zero");
+        require(_publicSaleAddress != address(0), "Public sale address cannot be zero");
 
-        developer = _developer;
-        emit DeveloperSet(_developer);
+        publicSaleAddress = _publicSaleAddress;
+        emit PublicSaleAddressSet(_publicSaleAddress);
 
         // Calculate total supply based on initial market cap and scaling factor
         _totalSupply = initialMCap / scalingFactor;
 
         // Calculate allocations
-        developerAllocation = (_totalSupply * 3) / 100; // 3%
-        ownerAllocation = _totalSupply - developerAllocation; // 97%
+        ownerAllocation = (_totalSupply * 3) / 100;             // 3%
+        publicSaleAllocation = _totalSupply - ownerAllocation;  // 97%
 
         // Mint allocations
-        _balances[msg.sender] += ownerAllocation;
-        emit Transfer(address(0), msg.sender, ownerAllocation);
+        _balances[owner()] += ownerAllocation;
+        emit Transfer(address(0), owner(), ownerAllocation);
 
-        _balances[developer] += developerAllocation;
-        emit Transfer(address(0), developer, developerAllocation);
+        _balances[publicSaleAddress] += publicSaleAllocation;
+        emit Transfer(address(0), publicSaleAddress, publicSaleAllocation);
 
         emit SupplyAdjusted(_totalSupply, block.timestamp);
     }
@@ -118,7 +122,6 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     function decreaseAllowance(address spender, uint256 subtractedValue) external whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[msg.sender][spender];
         require(currentAllowance >= subtractedValue, "Decreased allowance below zero");
-
         _approve(msg.sender, spender, currentAllowance - subtractedValue);
         return true;
     }
@@ -160,12 +163,12 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
         uint256 newTotalSupply = newMCap / scalingFactor;
 
         // Calculate new allocations
-        uint256 newDeveloperAllocation = (newTotalSupply * 3) / 100; // 3%
-        uint256 newOwnerAllocation = newTotalSupply - newDeveloperAllocation; // 97%
+        uint256 newOwnerAllocation = (newTotalSupply * 3) / 100;             // 3%
+        uint256 newPublicSaleAllocation = newTotalSupply - newOwnerAllocation; // 97%
 
         // Calculate differences
         int256 deltaOwner = int256(newOwnerAllocation) - int256(ownerAllocation);
-        int256 deltaDeveloper = int256(newDeveloperAllocation) - int256(developerAllocation);
+        int256 deltaPublicSale = int256(newPublicSaleAllocation) - int256(publicSaleAllocation);
 
         // Adjust owner supply
         if (deltaOwner > 0) {
@@ -174,16 +177,16 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
             _burn(owner(), uint256(-deltaOwner));
         }
 
-        // Adjust developer supply
-        if (deltaDeveloper > 0) {
-            _mint(developer, uint256(deltaDeveloper));
-        } else if (deltaDeveloper < 0) {
-            _burn(developer, uint256(-deltaDeveloper));
+        // Adjust public sale supply
+        if (deltaPublicSale > 0) {
+            _mint(publicSaleAddress, uint256(deltaPublicSale));
+        } else if (deltaPublicSale < 0) {
+            _burn(publicSaleAddress, uint256(-deltaPublicSale));
         }
 
         // Update allocations and total supply
         ownerAllocation = newOwnerAllocation;
-        developerAllocation = newDeveloperAllocation;
+        publicSaleAllocation = newPublicSaleAllocation;
         _totalSupply = newTotalSupply;
 
         emit SupplyAdjusted(_totalSupply, block.timestamp);
@@ -217,12 +220,12 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     // --------------------------------------
     // Admin Functions
     // --------------------------------------
-    /// @notice Sets a new developer address.
-    /// @param _newDeveloper The new developer address.
-    function setDeveloper(address _newDeveloper) external onlyOwner {
-        require(_newDeveloper != address(0), "Developer address cannot be zero");
-        developer = _newDeveloper;
-        emit DeveloperSet(_newDeveloper);
+    /// @notice Sets a new public sale address.
+    /// @param _newPublicSaleAddress The new public sale address.
+    function setPublicSaleAddress(address _newPublicSaleAddress) external onlyOwner {
+        require(_newPublicSaleAddress != address(0), "Public sale address cannot be zero");
+        publicSaleAddress = _newPublicSaleAddress;
+        emit PublicSaleAddressSet(_newPublicSaleAddress);
     }
 
     /// @notice Updates the scaling factor.
@@ -247,10 +250,10 @@ contract COIN100 is IERC20, Ownable, Pausable, ReentrancyGuard {
     // Fallback
     // --------------------------------------
     receive() external payable {
-        revert("Contract does not accept MATIC");
+        revert("Contract does not accept Ether");
     }
 
     fallback() external payable {
-        revert("Contract does not accept MATIC");
+        revert("Contract does not accept Ether");
     }
 }
