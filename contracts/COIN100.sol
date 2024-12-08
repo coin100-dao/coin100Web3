@@ -98,7 +98,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Initialize parameters
         rebaseFrequency = 1 days;        // Default once per day if desired
-        transfersWithFee = false;        // No transfer fee initially
+        transfersWithFee = true;        // No transfer fee initially
         transferFeeBasisPoints = 0;      // 0 by default
 
         // Set treasury to owner initially
