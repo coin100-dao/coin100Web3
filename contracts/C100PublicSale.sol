@@ -28,6 +28,9 @@ interface IERC20 {
  * - Future governance: After setting govContract, both owner and govContract share admin rights.
  * - Admin functions allow updating sale parameters, accepted tokens, rates, and pausing the sale.
  *
+ * Additional functionality:
+ * - Admin can rescue any accidental ERC20 tokens sent here (except for C100 before finalize) by transferring them to the treasury.
+ *
  * Assumptions:
  * - The C100 token contract does not have a direct burn function by sending to address(0). 
  *   We will send unsold tokens to a known burn address (e.g., 0x...dEaD) at finalize.
@@ -47,8 +50,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     bool public finalized;                 // Whether the ICO has been finalized
     
     // Rates and Accepted Tokens
-    // MATIC is represented implicitly; we store a rate for MATIC.
-    // For ERC20 tokens, we keep a mapping from token address -> rate (C100 per 1 token)
     uint256 public maticRate;              // How many C100 per 1 MATIC
     mapping(address => uint256) public erc20Rates; // token -> C100 per 1 token of that ERC20
 
@@ -65,6 +66,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     event ICOParametersUpdated(uint256 newStart, uint256 newEnd);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event Finalized(uint256 unsoldTokensBurned);
+    event TokensRescued(address indexed token, uint256 amount);
 
     // ---------------------------------------
     // Modifiers
@@ -241,12 +243,23 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         emit TreasuryUpdated(old, newTreasury);
     }
 
-    // Potential future admin functions could include:
-    // - Adjusting accepted tokens or removing them.
-    // - Adding a fee mechanism if desired.
-    // - Allowing withdrawal of any accidental ERC20 tokens sent here (except C100, which must remain until finalize).
-    // - Integrating with a price feed if dynamic pricing is desired in the future.
-    // For now, these are omitted for simplicity.
+    /**
+     * @notice Rescue any accidental ERC20 tokens sent to this contract (except C100 before finalize).
+     * @param token The ERC20 token address to rescue.
+     */
+    function rescueTokens(address token) external onlyAdmin {
+        require(token != address(0), "Token zero");
+        // If token is C100 and ICO not finalized, do not allow rescue (can't withdraw sale tokens)
+        if (token == address(c100Token) && !finalized) {
+            revert("Cannot rescue C100 before finalize");
+        }
+
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (balance > 0) {
+            require(IERC20(token).transfer(treasury, balance), "Rescue transfer failed");
+            emit TokensRescued(token, balance);
+        }
+    }
 
     // ---------------------------------------
     // Internal Helpers
