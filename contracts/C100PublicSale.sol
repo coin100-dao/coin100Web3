@@ -17,12 +17,12 @@ interface IERC20 {
 /**
  * @title C100PublicSale
  * @notice This contract handles the public ICO for COIN100 (C100) tokens.
- *         It sells C100 tokens for MATIC and optionally other ERC20 tokens (like USDC).
+ *         It sells C100 tokens for POL and optionally other ERC20 tokens (like USDC).
  * 
  * Key Features:
  * - The owner deploys this after deploying C100 token contract.
  * - Owner transfers 97% of C100 supply to this contract for sale.
- * - Investors buy C100 with MATIC or approved ERC20 tokens at a fixed rate.
+ * - Investors buy C100 with POL or approved ERC20 tokens at a fixed rate.
  * - ICO runs for a set duration (start and end time).
  * - At the end of ICO, admin calls finalize() to burn unsold tokens.
  * - Future governance: After setting govContract, both owner and govContract share admin rights.
@@ -50,7 +50,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     bool public finalized;                 // Whether the ICO has been finalized
     
     // Rates and Accepted Tokens
-    uint256 public maticRate;              // How many C100 per 1 MATIC
+    uint256 public polRate;              // How many C100 per 1 POL
     mapping(address => uint256) public erc20Rates; // token -> C100 per 1 token of that ERC20
 
     // Constants
@@ -61,7 +61,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     // ---------------------------------------
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
     event TokenPurchased(address indexed buyer, address indexed paymentToken, uint256 paymentAmount, uint256 c100Amount);
-    event RatesUpdated(uint256 newMaticRate);
+    event RatesUpdated(uint256 newPolRate);
     event Erc20RateUpdated(address indexed token, uint256 newRate);
     event ICOParametersUpdated(uint256 newStart, uint256 newEnd);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
@@ -104,7 +104,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         address initialTreasury,
         uint256 initialStartTime,
         uint256 initialEndTime,
-        uint256 initialMaticRate
+        uint256 initialPolRate
     )
         Ownable(msg.sender)
         Pausable()
@@ -113,26 +113,26 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(c100TokenAddress != address(0), "C100 token zero");
         require(initialTreasury != address(0), "Treasury zero");
         require(initialStartTime < initialEndTime, "Invalid time range");
-        require(initialMaticRate > 0, "Rate must be > 0");
+        require(initialPolRate > 0, "Rate must be > 0");
 
         c100Token = IERC20(c100TokenAddress);
         treasury = initialTreasury;
         startTime = initialStartTime;
         endTime = initialEndTime;
-        maticRate = initialMaticRate;
+        polRate = initialPolRate;
     }
 
     // ---------------------------------------
     // Purchasing Functions
     // ---------------------------------------
     /**
-     * @notice Buy C100 with MATIC.
+     * @notice Buy C100 with POL.
      */
-    function buyWithMATIC() external payable nonReentrant whenNotPaused icoActive {
-        require(msg.value > 0, "No MATIC sent");
-        uint256 c100Amount = msg.value * maticRate;
+    function buyWithPOL() external payable nonReentrant whenNotPaused icoActive {
+        require(msg.value > 0, "No POL sent");
+        uint256 c100Amount = msg.value * polRate;
         _deliverTokens(msg.sender, c100Amount);
-        _forwardFunds(msg.value); // MATIC directly goes to treasury
+        _forwardFunds(msg.value); // POL directly goes to treasury
         emit TokenPurchased(msg.sender, address(0), msg.value, c100Amount);
     }
 
@@ -199,12 +199,12 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Update the MATIC rate.
-     * @param newRate The new C100 per MATIC rate.
+     * @notice Update the POL rate.
+     * @param newRate The new C100 per POL rate.
      */
-    function updateMaticRate(uint256 newRate) external onlyAdmin icoNotStarted {
+    function updatePOLRate(uint256 newRate) external onlyAdmin icoNotStarted {
         require(newRate > 0, "Rate must be > 0");
-        maticRate = newRate;
+        polRate = newRate;
         emit RatesUpdated(newRate);
     }
 
@@ -271,15 +271,15 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     function _forwardFunds(uint256 amount) internal {
         (bool success, ) = treasury.call{value: amount}("");
-        require(success, "Forwarding MATIC failed");
+        require(success, "Forwarding POL failed");
     }
 
     // ---------------------------------------
     // Fallback Functions
     // ---------------------------------------
     receive() external payable {
-        // Allows receiving MATIC for buyWithMATIC()
-        // Any direct sends not via buyWithMATIC() are accepted but won't get tokens.
-        // It's recommended to always call buyWithMATIC().
+        // Allows receiving POL for buyWithPOL()
+        // Any direct sends not via buyWithPOL() are accepted but won't get tokens.
+        // It's recommended to always call buyWithPOL().
     }
 }
