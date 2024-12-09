@@ -473,7 +473,7 @@ For further inquiries, support, or to engage with the COIN100 team, please reach
 - **Reddit:** [r/Coin100](https://www.reddit.com/r/Coin100)
 - **X:** [@Coin100token](https://x.com/Coin100token)
 - **coin100:** 0xf2d5f457523d161a0942e5bdd1a9aee708b907fd
-- **publicSale:** 0x861b2bf658272408d4f332a2380112040a9e2407
+- **publicSale:** 0xfd1574a607684079f78ab5b90b74fdcc985643c1
 
 ---
 
