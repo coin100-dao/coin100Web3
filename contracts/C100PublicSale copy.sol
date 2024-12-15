@@ -166,7 +166,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         uint256 unsold = c100Token.balanceOf(address(this));
         if (unsold > 0) {
             // Burn unsold tokens by sending to BURN_ADDRESS
-            require(c100Token.transfer(BURN_ADDRESS, unsold), "Burn transfer failed");
+            c100Token.transfer(BURN_ADDRESS, unsold);
         }
         emit Finalized(unsold);
     }
@@ -240,7 +240,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(newTreasury != address(0), "Treasury zero");
         address old = treasury;
         treasury = newTreasury;
-        emit TreasuryAddressUpdated(old, newTreasury);
+        emit TreasuryUpdated(old, newTreasury);
     }
 
     /**
@@ -261,98 +261,25 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         }
     }
 
-    /**
-     * @notice Admin can burn tokens from treasury, reducing supply. This is the "occasional reduction in supply".
-     * @param amount The amount of tokens to burn from treasury.
-     */
-    function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
-        require(balanceOf(treasury) >= amount, "Not enough tokens in treasury");
-        uint256 gonsAmount = amount * _gonsPerFragment;
-        _gonsBalances[treasury] -= gonsAmount;
-        _totalSupply -= amount;
-
-        // Adjust gonsPerFragment since total supply changed
-        _gonsPerFragment = MAX_GONS / _totalSupply;
-
-        emit Transfer(treasury, address(0), amount);
-    }
-
     // ---------------------------------------
-    // LP Reward Management Functions
+    // Internal Helpers
     // ---------------------------------------
-
-    /**
-     * @notice Add a liquidity pool address to receive rewards.
-     * @param pool The liquidity pool address to add.
-     */
-    function addLiquidityPool(address pool) external onlyAdmin {
-        require(pool != address(0), "Pool address cannot be zero");
-        require(!liquidityPools[pool], "Pool already registered");
-
-        liquidityPools[pool] = true;
-        liquidityPoolList.push(pool);
-
-        emit LiquidityPoolAdded(pool);
+    function _deliverTokens(address recipient, uint256 amount) internal {
+        require(c100Token.balanceOf(address(this)) >= amount, "Not enough C100");
+        require(c100Token.transfer(recipient, amount), "C100 transfer failed");
     }
 
-    /**
-     * @notice Remove a liquidity pool address from receiving rewards.
-     * @param pool The liquidity pool address to remove.
-     */
-    function removeLiquidityPool(address pool) external onlyAdmin {
-        require(liquidityPools[pool], "Pool not registered");
-
-        liquidityPools[pool] = false;
-
-        // Remove from liquidityPoolList array
-        for (uint256 i = 0; i < liquidityPoolList.length; i++) {
-            if (liquidityPoolList[i] == pool) {
-                liquidityPoolList[i] = liquidityPoolList[liquidityPoolList.length - 1];
-                liquidityPoolList.pop();
-                break;
-            }
-        }
-
-        emit LiquidityPoolRemoved(pool);
-    }
-
-    /**
-     * @notice Set the LP reward percentage.
-     * @param _lpRewardPercentage The new reward percentage (e.g., 5 for 5%).
-     */
-    function setLpRewardPercentage(uint256 _lpRewardPercentage) external onlyAdmin {
-        require(_lpRewardPercentage <= maxLpRewardPercentage, "Reward percentage exceeds max limit");
-        lpRewardPercentage = _lpRewardPercentage;
-        emit LpRewardPercentageUpdated(_lpRewardPercentage);
-    }
-
-    /**
-     * @notice Set the maximum LP reward percentage.
-     * @param _maxLpRewardPercentage The new maximum reward percentage (e.g., 15 for 15%).
-     */
-    function setMaxLpRewardPercentage(uint256 _maxLpRewardPercentage) external onlyAdmin {
-        require(_maxLpRewardPercentage <= 50, "Max LP reward percentage too high"); // Example: 50% cap
-        maxLpRewardPercentage = _maxLpRewardPercentage;
-        emit MaxLpRewardPercentageUpdated(_maxLpRewardPercentage);
+    function _forwardFunds(uint256 amount) internal {
+        (bool success, ) = treasury.call{value: amount}("");
+        require(success, "Forwarding POL failed");
     }
 
     // ---------------------------------------
     // Fallback Functions
     // ---------------------------------------
     receive() external payable {
-        revert("No ETH");
+        // Allows receiving POL for buyWithPOL()
+        // Any direct sends not via buyWithPOL() are accepted but won't get tokens.
+        // It's recommended to always call buyWithPOL().
     }
-
-    fallback() external payable {
-        revert("No ETH");
-    }
-}
-
-/**
- * @title IC100PublicSale
- * @notice Interface to interact with the C100PublicSale contract.
- */
-interface IC100PublicSale {
-    function polRate() external view returns (uint256);
-    function updatePOLRate(uint256 newRate) external;
 }

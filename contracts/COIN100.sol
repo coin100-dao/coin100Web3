@@ -15,13 +15,14 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * - Fee-Based Treasury Growth
  * - LP Rewards Allocation
  * - Governance Transition
+ * - Dynamic polRate Update in Public Sale
  *
  * Tokenomics at Deployment:
  * - Total supply = initialMarketCap (M0)
  * - 3% of total supply to owner, 97% also to owner (total 100% to owner at start).
  *
  * Daily/periodic manual rebases:
- * - Admin calls `rebase(newMCap)` to adjust supply based on top 100 market cap.
+ * - Admin calls `rebase(newMCap, newPolRate)` to adjust supply based on top 100 market cap.
  *
  * Governance Transition:
  * - Initially, owner is admin.
@@ -44,7 +45,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 private _gonsPerFragment;     // Gons per fragment scaling factor
 
     mapping(address => uint256) private _gonsBalances;
-    mapping(address => mapping(address => uint256)) private _allowances;
+    mapping(address => mapping(address, uint256)) private _allowances;
 
     // Initial allocations
     uint256 public ownerAllocation;       // 3% of total supply
@@ -70,6 +71,11 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 public maxLpRewardPercentage = 10; // Maximum allowed reward percentage (e.g., 10%)
 
     // ---------------------------------------
+    // Public Sale Contract
+    // ---------------------------------------
+    IC100PublicSale public publicSaleContract;
+
+    // ---------------------------------------
     // Events
     // ---------------------------------------
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
@@ -82,6 +88,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event LiquidityPoolRemoved(address indexed pool);
     event LpRewardPercentageUpdated(uint256 newPercentage);
     event MaxLpRewardPercentageUpdated(uint256 newMaxPercentage);
+    event PublicSaleContractSet(address indexed oldSaleContract, address indexed newSaleContract);
+    event POLRateUpdated(uint256 oldRate, uint256 newRate);
 
     // ---------------------------------------
     // Constructor
@@ -224,8 +232,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     /**
      * @notice Manually update the market cap and rebase all balances.
      * @param newMarketCap The new total market cap of top 100 cryptos.
+     * @param newPolRate The new POL rate for public sale (if updating).
      */
-    function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
+    function rebase(uint256 newMarketCap, uint256 newPolRate) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Mcap must be > 0");
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
@@ -259,6 +268,13 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         if (isIncrease && lpRewardPercentage > 0 && liquidityPoolList.length > 0) {
             uint256 rewardAmount = (supplyDelta * lpRewardPercentage) / 100;
             _allocateRewardsToLPs(rewardAmount);
+        }
+
+        // Update polRate in Public Sale Contract if provided and set
+        if (newPolRate > 0 && address(publicSaleContract) != address(0)) {
+            uint256 oldPolRate = publicSaleContract.polRate();
+            publicSaleContract.updatePOLRate(newPolRate);
+            emit POLRateUpdated(oldPolRate, newPolRate);
         }
     }
 
@@ -302,6 +318,17 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         address oldGov = govContract;
         govContract = _govContract;
         emit GovernorContractSet(oldGov, _govContract);
+    }
+
+    /**
+     * @notice Set the Public Sale contract address. Can be set once or updated if needed.
+     * @param _publicSaleContract The address of the C100PublicSale contract.
+     */
+    function setPublicSaleContract(address _publicSaleContract) external onlyOwner {
+        require(_publicSaleContract != address(0), "Public sale contract zero");
+        address oldSale = address(publicSaleContract);
+        publicSaleContract = IC100PublicSale(_publicSaleContract);
+        emit PublicSaleContractSet(oldSale, _publicSaleContract);
     }
 
     /**
@@ -435,4 +462,13 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     fallback() external payable {
         revert("No ETH");
     }
+}
+
+/**
+ * @title IC100PublicSale
+ * @notice Interface to interact with the C100PublicSale contract.
+ */
+interface IC100PublicSale {
+    function polRate() external view returns (uint256);
+    function updatePOLRate(uint256 newRate) external;
 }
