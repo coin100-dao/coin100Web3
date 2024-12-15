@@ -11,13 +11,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  *         On each rebase, all balances scale proportionally to reflect changes
  *         in the top 100 market cap, ensuring each holder maintains their fraction.
  * 
- * New Feature: Fee-Based Treasury Growth and LP Rewards
- * - If `transfersWithFee` is enabled, a small fee is taken from each transfer and sent to a treasury address.
- * - The treasury address is initially set to the owner at deployment.
- * - Later, when governance is established, the treasury address can be updated by the admin (owner/gov).
- * - Collected fees can accumulate in the treasury and, at admin’s discretion, tokens could be burned from the treasury 
- *   or used for other community-approved purposes.
- * - **New:** Allocate a percentage of newly minted tokens during rebase to registered liquidity pools as rewards.
+ * New Features:
+ * - Fee-Based Treasury Growth
+ * - LP Rewards Allocation
+ * - Governance Transition
  *
  * Tokenomics at Deployment:
  * - Total supply = initialMarketCap (M0)
@@ -60,17 +57,17 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     address public treasury;
 
     // Future parameters for governance
-    uint256 public rebaseFrequency;       // How often upkeep can be called
-    bool public transfersWithFee;         // If true, transfers incur a fee
-    uint256 public transferFeeBasisPoints; // Fee in basis points (e.g. 100 = 1%)
+    uint256 public rebaseFrequency;           // How often upkeep can be called
+    bool public transfersWithFee;             // If true, transfers incur a fee
+    uint256 public transferFeeBasisPoints;    // Fee in basis points (e.g., 100 = 1%)
 
     // ---------------------------------------
     // LP Reward Variables
     // ---------------------------------------
     mapping(address => bool) public liquidityPools;
     address[] public liquidityPoolList;
-    uint256 public lpRewardPercentage; // e.g., 5 means 5%
-    uint256 public constant MAX_LP_REWARD = 10; // Maximum allowed reward percentage (e.g., 10%)
+    uint256 public lpRewardPercentage;        // e.g., 5 means 5%
+    uint256 public maxLpRewardPercentage = 10; // Maximum allowed reward percentage (e.g., 10%)
 
     // ---------------------------------------
     // Events
@@ -84,6 +81,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event LiquidityPoolAdded(address indexed pool);
     event LiquidityPoolRemoved(address indexed pool);
     event LpRewardPercentageUpdated(uint256 newPercentage);
+    event MaxLpRewardPercentageUpdated(uint256 newMaxPercentage);
 
     // ---------------------------------------
     // Constructor
@@ -109,9 +107,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         emit Transfer(address(0), owner(), _totalSupply);
 
         // Initialize parameters
-        rebaseFrequency = 1 days;        // Default once per day if desired
-        transfersWithFee = true;         // No transfer fee initially
-        transferFeeBasisPoints = 0;       // 0 by default
+        rebaseFrequency = 1 days;                // Default once per day
+        transfersWithFee = true;                 // Transfers incur a fee by default
+        transferFeeBasisPoints = 100;            // Default 1% fee
 
         // Set treasury to owner initially
         treasury = owner();
@@ -124,7 +122,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Modifiers
     // ---------------------------------------
     modifier onlyAdmin() {
-        // only owner if no govContract set, else govContract or owner
+        // Only owner if no govContract set, else govContract or owner
         require(
             msg.sender == owner() || 
             (govContract != address(0) && msg.sender == govContract),
@@ -232,15 +230,21 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
-        // ratio = (newMarketCap / oldMarketCap) scaled by 1e18
+        // Calculate the new supply based on market cap ratio
         uint256 ratioScaled = (newMarketCap * 1e18) / oldMarketCap;
-
-        // newSupply = oldSupply * (ratioScaled / 1e18)
         uint256 newSupply = (oldSupply * ratioScaled) / 1e18;
         require(newSupply > 0, "New supply must be > 0");
 
         // Calculate the difference in supply
-        uint256 supplyDelta = newSupply > oldSupply ? newSupply - oldSupply : oldSupply - newSupply;
+        uint256 supplyDelta;
+        bool isIncrease;
+        if (newSupply > oldSupply) {
+            supplyDelta = newSupply - oldSupply;
+            isIncrease = true;
+        } else {
+            supplyDelta = oldSupply - newSupply;
+            isIncrease = false;
+        }
 
         // Update gonsPerFragment based on the new supply
         _gonsPerFragment = MAX_GONS / newSupply;
@@ -252,7 +256,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         emit Rebase(oldMarketCap, newMarketCap, ratioScaled, block.timestamp);
 
         // If supply is increasing, allocate rewards to liquidity pools
-        if (newSupply > oldSupply && lpRewardPercentage > 0 && liquidityPoolList.length > 0) {
+        if (isIncrease && lpRewardPercentage > 0 && liquidityPoolList.length > 0) {
             uint256 rewardAmount = (supplyDelta * lpRewardPercentage) / 100;
             _allocateRewardsToLPs(rewardAmount);
         }
@@ -317,7 +321,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Update the rebase frequency. For future use if we want to enforce time constraints.
-     * @param newFrequency The new frequency parameter (e.g. in seconds).
+     * @param newFrequency The new frequency parameter (e.g., in seconds).
      */
     function setRebaseFrequency(uint256 newFrequency) external onlyAdmin {
         rebaseFrequency = newFrequency;
@@ -326,10 +330,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     /**
      * @notice Enable or disable transfer fees and set fee basis points.
      * @param enabled True to enable, false to disable transfer fee.
-     * @param newFeeBasisPoints The new fee in basis points (e.g. 100 = 1%).
+     * @param newFeeBasisPoints The new fee in basis points (e.g., 100 = 1%).
      */
     function setTransferFeeParams(bool enabled, uint256 newFeeBasisPoints) external onlyAdmin {
-        require(newFeeBasisPoints <= 1000, "Fee too high"); // e.g. max 10%
+        require(newFeeBasisPoints <= 1000, "Fee too high"); // e.g., max 10%
         transfersWithFee = enabled;
         transferFeeBasisPoints = newFeeBasisPoints;
         emit FeeParametersUpdated(enabled, newFeeBasisPoints);
@@ -406,9 +410,19 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param _lpRewardPercentage The new reward percentage (e.g., 5 for 5%).
      */
     function setLpRewardPercentage(uint256 _lpRewardPercentage) external onlyAdmin {
-        require(_lpRewardPercentage <= MAX_LP_REWARD, "Reward percentage too high");
+        require(_lpRewardPercentage <= maxLpRewardPercentage, "Reward percentage exceeds max limit");
         lpRewardPercentage = _lpRewardPercentage;
         emit LpRewardPercentageUpdated(_lpRewardPercentage);
+    }
+
+    /**
+     * @notice Set the maximum LP reward percentage.
+     * @param _maxLpRewardPercentage The new maximum reward percentage (e.g., 15 for 15%).
+     */
+    function setMaxLpRewardPercentage(uint256 _maxLpRewardPercentage) external onlyAdmin {
+        require(_maxLpRewardPercentage <= 50, "Max LP reward percentage too high"); // Example: 50% cap
+        maxLpRewardPercentage = _maxLpRewardPercentage;
+        emit MaxLpRewardPercentageUpdated(_maxLpRewardPercentage);
     }
 
     // ---------------------------------------
