@@ -45,7 +45,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 private _gonsPerFragment;     // Gons per fragment scaling factor
 
     mapping(address => uint256) private _gonsBalances;
-    mapping(address => mapping(address, uint256)) private _allowances;
+    mapping(address => mapping(address => uint256)) private _allowances;
 
     // Initial allocations
     uint256 public ownerAllocation;       // 3% of total supply
