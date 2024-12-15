@@ -11,20 +11,23 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  *         On each rebase, all balances scale proportionally to reflect changes
  *         in the top 100 market cap, ensuring each holder maintains their fraction.
  * 
+ * New Feature: Fee-Based Treasury Growth
+ * - If `transfersWithFee` is enabled, a small fee is taken from each transfer and sent to a treasury address.
+ * - The treasury address is initially set to the owner at deployment.
+ * - Later, when governance is established, the treasury address can be updated by the admin (owner/gov).
+ * - Collected fees can accumulate in the treasury and, at admin’s discretion, tokens could be burned from the treasury 
+ *   or used for other community-approved purposes.
+ *
  * Tokenomics at Deployment:
  * - Total supply = initialMarketCap (M0)
- * - 3% of total supply is the owner's allocation (as appreciation for initial upkeep).
- * - 97% of total supply also assigned to the owner at launch (total 100% to owner).
- *   Owner can distribute or sell these tokens (e.g., via ICO contract).
+ * - 3% of total supply to owner, 97% also to owner (total 100% to owner at start).
  *
  * Daily/periodic manual rebases:
- * - The owner or, later, a governor contract can call `rebase(newMCap)` to update the supply
- *   proportionally based on the top 100 market cap.
- *   
+ * - Admin calls `rebase(newMCap)` to adjust supply based on top 100 market cap.
+ *
  * Governance Transition:
- * - Initially, the owner is the admin who controls key parameters and rebases.
- * - In the future, a governor contract will be set, transferring these admin rights.
- * - After setting the governor contract, it will share or take over admin functions.
+ * - Initially, owner is admin.
+ * - A govContract can be set, sharing admin rights.
  */
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // ---------------------------------------
@@ -52,10 +55,13 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Governor contract address (initially none)
     address public govContract;
 
-    // Future parameters (placeholders for community governance):
-    // These could be parameters that the community might want to adjust in the future.
-    uint256 public rebaseFrequency;       // How often upkeep can be called (in seconds or blocks)
-    bool public transfersWithFee;         // Example toggling fee on transfers if implemented in future.
+    // Treasury for fee collection
+    address public treasury;
+
+    // Future parameters for governance
+    uint256 public rebaseFrequency;       // How often upkeep can be called
+    bool public transfersWithFee;         // If true, transfers incur a fee
+    uint256 public transferFeeBasisPoints; // Fee in basis points (e.g. 100 = 1%)
 
     // ---------------------------------------
     // Events
@@ -64,6 +70,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
+    event TreasuryAddressUpdated(address indexed oldTreasury, address indexed newTreasury);
+    event FeeParametersUpdated(bool transfersWithFee, uint256 transferFeeBasisPoints);
 
     // ---------------------------------------
     // Constructor
@@ -76,7 +84,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         lastMarketCap = initialMarketCap;
 
         // Calculate owner allocations
-        ownerAllocation = (_totalSupply * 3) / 100;          // 3%
+        ownerAllocation = (_totalSupply * 3) / 100;           // 3%
         remainingAllocation = _totalSupply - ownerAllocation; // 97%
 
         // Initialize gonsPerFragment
@@ -88,9 +96,13 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         emit Transfer(address(0), owner(), _totalSupply);
 
-        // Initialize future parameters with sensible defaults
-        rebaseFrequency = 1 days;        // Default: can rebase once per day if desired
-        transfersWithFee = false;        // No transfer fee initially
+        // Initialize parameters
+        rebaseFrequency = 1 days;        // Default once per day if desired
+        transfersWithFee = true;        // No transfer fee initially
+        transferFeeBasisPoints = 0;      // 0 by default
+
+        // Set treasury to owner initially
+        treasury = owner();
     }
 
     // ---------------------------------------
@@ -159,15 +171,31 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         require(to != address(0), "To zero");
         require(balanceOf(from) >= amount, "Balance too low");
 
-        // If we had a fee mechanism, we could apply it here if transfersWithFee is true.
-        // For now, no actual fee logic, just a placeholder.
-        // E.g., if transfersWithFee, take a small percentage of `amount` and send to treasury.
-        
         uint256 gonsAmount = amount * _gonsPerFragment;
-        _gonsBalances[from] -= gonsAmount;
-        _gonsBalances[to] += gonsAmount;
 
-        emit Transfer(from, to, amount);
+        _gonsBalances[from] -= gonsAmount;
+
+        if (transfersWithFee && transferFeeBasisPoints > 0) {
+            // Apply fee
+            uint256 feeGons = (gonsAmount * transferFeeBasisPoints) / 10000;
+            uint256 gonsAfterFee = gonsAmount - feeGons;
+
+            // Send fee to treasury
+            _gonsBalances[treasury] += feeGons;
+
+            // Remaining to recipient
+            _gonsBalances[to] += gonsAfterFee;
+
+            uint256 feeAmount = feeGons / _gonsPerFragment;
+            uint256 recipientAmount = gonsAfterFee / _gonsPerFragment;
+
+            emit Transfer(from, treasury, feeAmount);
+            emit Transfer(from, to, recipientAmount);
+        } else {
+            // No fee, direct transfer
+            _gonsBalances[to] += gonsAmount;
+            emit Transfer(from, to, amount);
+        }
     }
 
     function _approve(address owner_, address spender, uint256 amount) internal {
@@ -242,16 +270,43 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Enable or disable transfer fees (if implemented in the future).
-     * @param enabled True to enable, false to disable.
+     * @notice Enable or disable transfer fees and set fee basis points.
+     * @param enabled True to enable, false to disable transfer fee.
+     * @param newFeeBasisPoints The new fee in basis points (e.g. 100 = 1%).
      */
-    function setTransfersWithFee(bool enabled) external onlyAdmin {
+    function setTransferFeeParams(bool enabled, uint256 newFeeBasisPoints) external onlyAdmin {
+        require(newFeeBasisPoints <= 1000, "Fee too high"); // e.g. max 10%
         transfersWithFee = enabled;
+        transferFeeBasisPoints = newFeeBasisPoints;
+        emit FeeParametersUpdated(enabled, newFeeBasisPoints);
     }
 
-    // Additional future functions could be added here as placeholders for what the gov contract
-    // might control: changing fee rates, directing minted tokens to a treasury, setting 
-    // oracles (once automated), or even changing references for the index composition.
+    /**
+     * @notice Update the treasury address. Initially set to owner, can change when governance is established.
+     * @param newTreasury The new treasury address.
+     */
+    function updateTreasuryAddress(address newTreasury) external onlyAdmin {
+        require(newTreasury != address(0), "Treasury zero");
+        address old = treasury;
+        treasury = newTreasury;
+        emit TreasuryAddressUpdated(old, newTreasury);
+    }
+
+    /**
+     * @notice Admin can burn tokens from treasury, reducing supply. This is the "occasional reduction in supply".
+     * @param amount The amount of tokens to burn from treasury.
+     */
+    function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
+        require(balanceOf(treasury) >= amount, "Not enough tokens in treasury");
+        uint256 gonsAmount = amount * _gonsPerFragment;
+        _gonsBalances[treasury] -= gonsAmount;
+        _totalSupply -= amount;
+
+        // Adjust gonsPerFragment since total supply changed
+        _gonsPerFragment = MAX_GONS / _totalSupply;
+
+        emit Transfer(treasury, address(0), amount);
+    }
 
     // ---------------------------------------
     // Fallback Functions

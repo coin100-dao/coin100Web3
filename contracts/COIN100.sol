@@ -11,12 +11,13 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  *         On each rebase, all balances scale proportionally to reflect changes
  *         in the top 100 market cap, ensuring each holder maintains their fraction.
  * 
- * New Feature: Fee-Based Treasury Growth
+ * New Feature: Fee-Based Treasury Growth and LP Rewards
  * - If `transfersWithFee` is enabled, a small fee is taken from each transfer and sent to a treasury address.
  * - The treasury address is initially set to the owner at deployment.
  * - Later, when governance is established, the treasury address can be updated by the admin (owner/gov).
  * - Collected fees can accumulate in the treasury and, at admin’s discretion, tokens could be burned from the treasury 
  *   or used for other community-approved purposes.
+ * - **New:** Allocate a percentage of newly minted tokens during rebase to registered liquidity pools as rewards.
  *
  * Tokenomics at Deployment:
  * - Total supply = initialMarketCap (M0)
@@ -64,6 +65,14 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 public transferFeeBasisPoints; // Fee in basis points (e.g. 100 = 1%)
 
     // ---------------------------------------
+    // LP Reward Variables
+    // ---------------------------------------
+    mapping(address => bool) public liquidityPools;
+    address[] public liquidityPoolList;
+    uint256 public lpRewardPercentage; // e.g., 5 means 5%
+    uint256 public constant MAX_LP_REWARD = 10; // Maximum allowed reward percentage (e.g., 10%)
+
+    // ---------------------------------------
     // Events
     // ---------------------------------------
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
@@ -72,6 +81,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
     event TreasuryAddressUpdated(address indexed oldTreasury, address indexed newTreasury);
     event FeeParametersUpdated(bool transfersWithFee, uint256 transferFeeBasisPoints);
+    event LiquidityPoolAdded(address indexed pool);
+    event LiquidityPoolRemoved(address indexed pool);
+    event LpRewardPercentageUpdated(uint256 newPercentage);
 
     // ---------------------------------------
     // Constructor
@@ -98,11 +110,14 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Initialize parameters
         rebaseFrequency = 1 days;        // Default once per day if desired
-        transfersWithFee = true;        // No transfer fee initially
-        transferFeeBasisPoints = 0;      // 0 by default
+        transfersWithFee = true;         // No transfer fee initially
+        transferFeeBasisPoints = 0;       // 0 by default
 
         // Set treasury to owner initially
         treasury = owner();
+
+        // Initialize LP reward parameters
+        lpRewardPercentage = 5; // Example: 5%
     }
 
     // ---------------------------------------
@@ -224,12 +239,51 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 newSupply = (oldSupply * ratioScaled) / 1e18;
         require(newSupply > 0, "New supply must be > 0");
 
+        // Calculate the difference in supply
+        uint256 supplyDelta = newSupply > oldSupply ? newSupply - oldSupply : oldSupply - newSupply;
+
+        // Update gonsPerFragment based on the new supply
         _gonsPerFragment = MAX_GONS / newSupply;
 
+        // Update total supply and last market cap
         _totalSupply = newSupply;
         lastMarketCap = newMarketCap;
 
         emit Rebase(oldMarketCap, newMarketCap, ratioScaled, block.timestamp);
+
+        // If supply is increasing, allocate rewards to liquidity pools
+        if (newSupply > oldSupply && lpRewardPercentage > 0 && liquidityPoolList.length > 0) {
+            uint256 rewardAmount = (supplyDelta * lpRewardPercentage) / 100;
+            _allocateRewardsToLPs(rewardAmount);
+        }
+    }
+
+    /**
+     * @notice Allocate rewards to liquidity pools proportionally based on their current holdings.
+     * @param rewardAmount The total amount of tokens to distribute as rewards.
+     */
+    function _allocateRewardsToLPs(uint256 rewardAmount) internal {
+        uint256 totalLpSupply = 0;
+
+        // Calculate the total C100 held by all liquidity pools
+        for (uint256 i = 0; i < liquidityPoolList.length; i++) {
+            totalLpSupply += balanceOf(liquidityPoolList[i]);
+        }
+
+        require(totalLpSupply > 0, "Total LP supply is zero");
+
+        // Distribute rewards proportionally
+        for (uint256 i = 0; i < liquidityPoolList.length; i++) {
+            address pool = liquidityPoolList[i];
+            uint256 poolBalance = balanceOf(pool);
+            uint256 poolReward = (rewardAmount * poolBalance) / totalLpSupply;
+            _gonsBalances[pool] += poolReward * _gonsPerFragment;
+
+            emit Transfer(address(this), pool, poolReward);
+        }
+
+        // Update total supply to include rewards
+        _totalSupply += rewardAmount;
     }
 
     // ---------------------------------------
@@ -306,6 +360,55 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _gonsPerFragment = MAX_GONS / _totalSupply;
 
         emit Transfer(treasury, address(0), amount);
+    }
+
+    // ---------------------------------------
+    // LP Reward Management Functions
+    // ---------------------------------------
+
+    /**
+     * @notice Add a liquidity pool address to receive rewards.
+     * @param pool The liquidity pool address to add.
+     */
+    function addLiquidityPool(address pool) external onlyAdmin {
+        require(pool != address(0), "Pool address cannot be zero");
+        require(!liquidityPools[pool], "Pool already registered");
+
+        liquidityPools[pool] = true;
+        liquidityPoolList.push(pool);
+
+        emit LiquidityPoolAdded(pool);
+    }
+
+    /**
+     * @notice Remove a liquidity pool address from receiving rewards.
+     * @param pool The liquidity pool address to remove.
+     */
+    function removeLiquidityPool(address pool) external onlyAdmin {
+        require(liquidityPools[pool], "Pool not registered");
+
+        liquidityPools[pool] = false;
+
+        // Remove from liquidityPoolList array
+        for (uint256 i = 0; i < liquidityPoolList.length; i++) {
+            if (liquidityPoolList[i] == pool) {
+                liquidityPoolList[i] = liquidityPoolList[liquidityPoolList.length - 1];
+                liquidityPoolList.pop();
+                break;
+            }
+        }
+
+        emit LiquidityPoolRemoved(pool);
+    }
+
+    /**
+     * @notice Set the LP reward percentage.
+     * @param _lpRewardPercentage The new reward percentage (e.g., 5 for 5%).
+     */
+    function setLpRewardPercentage(uint256 _lpRewardPercentage) external onlyAdmin {
+        require(_lpRewardPercentage <= MAX_LP_REWARD, "Reward percentage too high");
+        lpRewardPercentage = _lpRewardPercentage;
+        emit LpRewardPercentageUpdated(_lpRewardPercentage);
     }
 
     // ---------------------------------------
