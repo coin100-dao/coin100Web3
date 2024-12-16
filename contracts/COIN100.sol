@@ -6,6 +6,21 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
+ * @title IC100PublicSale
+ * @notice Interface to interact with the C100PublicSale contract.
+ */
+interface IC100PublicSale {
+    function polRate() external view returns (uint256);
+    function updatePOLRate(uint256 newRate) external;
+}
+
+interface IUniswapV2Pair {
+    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
+    function token0() external view returns (address);
+    function token1() external view returns (address);
+}
+
+/**
  * @title COIN100 (C100)
  * @notice A rebasing token representing the top 100 crypto market cap index.
  *         On each rebase, all balances scale proportionally to reflect changes
@@ -17,12 +32,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * - Governance Transition
  * - Dynamic polRate Update in Public Sale
  *
- * Tokenomics at Deployment:
- * - Total supply = initialMarketCap (M0)
- * - 3% of total supply to owner, 97% also to owner (total 100% to owner at start).
- *
  * Daily/periodic manual rebases:
- * - Admin calls `rebase(newMCap, newPolRate)` to adjust supply based on top 100 market cap.
+ * - Admin calls `rebase(newMarketCap)` to adjust supply based on top 100 market cap.
  *
  * Governance Transition:
  * - Initially, owner is admin.
@@ -39,45 +50,48 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // ---------------------------------------
     // Rebase state variables
     // ---------------------------------------
-    uint256 private _totalSupply;         // Current total supply in "fragment" terms
-    uint256 public lastMarketCap;         // Last known total market cap of top 100
+    uint256 private _totalSupply;         
+    uint256 public lastMarketCap;         
     uint256 constant MAX_GONS = type(uint256).max / 1e18;
-    uint256 private _gonsPerFragment;     // Gons per fragment scaling factor
+    uint256 private _gonsPerFragment;     
 
     mapping(address => uint256) private _gonsBalances;
     mapping(address => mapping(address => uint256)) private _allowances;
 
-    // Initial allocations
-    uint256 public ownerAllocation;       // 3% of total supply
-    uint256 public remainingAllocation;   // The other 97%
+    uint256 public ownerAllocation;       
+    uint256 public remainingAllocation;   
 
-    // Governor contract address (initially none)
+    // Governance
     address public govContract;
 
-    // Treasury for fee collection
+    // Treasury and fees
     address public treasury;
+    bool public transfersWithFee;             
+    uint256 public transferFeeBasisPoints;    
 
-    // Future parameters for governance
-    uint256 public rebaseFrequency;           // How often upkeep can be called
-    bool public transfersWithFee;             // If true, transfers incur a fee
-    uint256 public transferFeeBasisPoints;    // Fee in basis points (e.g., 100 = 1%)
-
-    // ---------------------------------------
-    // LP Reward Variables
-    // ---------------------------------------
+    // LP Rewards
     mapping(address => bool) public liquidityPools;
     address[] public liquidityPoolList;
-    uint256 public lpRewardPercentage;        // e.g., 5 means 5%
-    uint256 public maxLpRewardPercentage = 10; // Maximum allowed reward percentage (e.g., 10%)
+    uint256 public lpRewardPercentage;        
+    uint256 public maxLpRewardPercentage = 10; 
 
-    // ---------------------------------------
     // Public Sale Contract
-    // ---------------------------------------
     IC100PublicSale public publicSaleContract;
 
-    // ---------------------------------------
+    // Liquidity Pools for pricing
+    address public c100USDCPool;  // For fallback price in USDC
+    address public c100POLPool;   // Primary source for polRate (C100 per POL)
+
+    // polInUSDCRate: USDC per POL (scaled by 1e18) for fallback calculations
+    uint256 public polInUSDCRate;
+
+    // Last calculated polRate from pools
+    uint256 public lastCalculatedPolRate;
+
+    // Rebase frequency placeholder
+    uint256 public rebaseFrequency;           
+
     // Events
-    // ---------------------------------------
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
     event Transfer(address indexed from, address indexed to, uint256 amount);
     event Approval(address indexed owner, address indexed spender, uint256 amount);
@@ -90,58 +104,42 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event MaxLpRewardPercentageUpdated(uint256 newMaxPercentage);
     event PublicSaleContractSet(address indexed oldSaleContract, address indexed newSaleContract);
     event POLRateUpdated(uint256 oldRate, uint256 newRate);
+    event C100USDCPoolSet(address oldPool, address newPool);
+    event C100POLPoolSet(address oldPool, address newPool);
+    event PolInUSDCRateUpdated(uint256 oldRate, uint256 newRate);
 
-    // ---------------------------------------
-    // Constructor
-    // ---------------------------------------
-    constructor(uint256 initialMarketCap) Ownable(msg.sender) Pausable() ReentrancyGuard() {
+    constructor(uint256 initialMarketCap, uint256 initialPolRate) Ownable(msg.sender) Pausable() ReentrancyGuard() {
         require(initialMarketCap > 0, "Initial mcap must be > 0");
+        require(initialPolRate > 0, "Initial polRate must be > 0");
 
-        // Set initial total supply = initial market cap
         _totalSupply = initialMarketCap;
         lastMarketCap = initialMarketCap;
 
-        // Calculate owner allocations
-        ownerAllocation = (_totalSupply * 3) / 100;           // 3%
-        remainingAllocation = _totalSupply - ownerAllocation; // 97%
+        ownerAllocation = (_totalSupply * 3) / 100;           
+        remainingAllocation = _totalSupply - ownerAllocation; 
 
-        // Initialize gonsPerFragment
         _gonsPerFragment = MAX_GONS / _totalSupply;
 
-        // Mint entire supply to owner
         uint256 totalGons = _totalSupply * _gonsPerFragment;
         _gonsBalances[owner()] = totalGons;
 
         emit Transfer(address(0), owner(), _totalSupply);
 
-        // Initialize parameters
-        rebaseFrequency = 1 days;                // Default once per day
-        transfersWithFee = true;                 // Transfers incur a fee by default
-        transferFeeBasisPoints = 100;            // Default 1% fee
-
-        // Set treasury to owner initially
+        // Default parameters
+        rebaseFrequency = 1 days;
+        transfersWithFee = true;                
+        transferFeeBasisPoints = 100;           
         treasury = owner();
-
-        // Initialize LP reward parameters
-        lpRewardPercentage = 5; // Example: 5%
+        lpRewardPercentage = 5; 
+        lastCalculatedPolRate = initialPolRate; // Start with an initial polRate
     }
 
-    // ---------------------------------------
-    // Modifiers
-    // ---------------------------------------
     modifier onlyAdmin() {
-        // Only owner if no govContract set, else govContract or owner
-        require(
-            msg.sender == owner() || 
-            (govContract != address(0) && msg.sender == govContract),
-            "Not admin"
-        );
+        require(msg.sender == owner() || (govContract != address(0) && msg.sender == govContract), "Not admin");
         _;
     }
 
-    // ---------------------------------------
-    // ERC20 Standard Interface
-    // ---------------------------------------
+    // ERC20 standard
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
@@ -166,7 +164,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     function transferFrom(address from, address to, uint256 amount) public whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[from][msg.sender];
-        require(currentAllowance >= amount, "Transfer exceeds allowance");
+        require(currentAllowance >= amount, "Exceeds allowance");
         _transfer(from, to, amount);
         _approve(from, msg.sender, currentAllowance - amount);
         return true;
@@ -179,14 +177,12 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     function decreaseAllowance(address spender, uint256 subtractedValue) external whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[msg.sender][spender];
-        require(currentAllowance >= subtractedValue, "Decrease below zero");
+        require(currentAllowance >= subtractedValue, "Below zero");
         _approve(msg.sender, spender, currentAllowance - subtractedValue);
         return true;
     }
 
-    // ---------------------------------------
-    // Internal Functions
-    // ---------------------------------------
+    // Internal transfer and approve
     function _transfer(address from, address to, uint256 amount) internal {
         require(from != address(0), "From zero");
         require(to != address(0), "To zero");
@@ -197,14 +193,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _gonsBalances[from] -= gonsAmount;
 
         if (transfersWithFee && transferFeeBasisPoints > 0) {
-            // Apply fee
             uint256 feeGons = (gonsAmount * transferFeeBasisPoints) / 10000;
             uint256 gonsAfterFee = gonsAmount - feeGons;
 
-            // Send fee to treasury
             _gonsBalances[treasury] += feeGons;
-
-            // Remaining to recipient
             _gonsBalances[to] += gonsAfterFee;
 
             uint256 feeAmount = feeGons / _gonsPerFragment;
@@ -213,7 +205,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             emit Transfer(from, treasury, feeAmount);
             emit Transfer(from, to, recipientAmount);
         } else {
-            // No fee, direct transfer
             _gonsBalances[to] += gonsAmount;
             emit Transfer(from, to, amount);
         }
@@ -226,25 +217,27 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         emit Approval(owner_, spender, amount);
     }
 
-    // ---------------------------------------
-    // Rebase Function (Manual Upkeep by Admin)
-    // ---------------------------------------
-    /**
-     * @notice Manually update the market cap and rebase all balances.
-     * @param newMarketCap The new total market cap of top 100 cryptos.
-     * @param newPolRate The new POL rate for public sale (if updating).
-     */
-    function rebase(uint256 newMarketCap, uint256 newPolRate) external onlyAdmin nonReentrant whenNotPaused {
-        require(newMarketCap > 0, "Mcap must be > 0");
+    // Rebase logic
+    function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
+        require(newMarketCap > 0, "Mcap > 0");
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
-        // Calculate the new supply based on market cap ratio
+        // Update polRate from pools before calculating supply
+        uint256 oldPolRate = lastCalculatedPolRate;
+        uint256 newPolRate = _getPolRateFromPools();
+        lastCalculatedPolRate = newPolRate;
+
+        // Sync with Public Sale if set
+        if (address(publicSaleContract) != address(0)) {
+            publicSaleContract.updatePOLRate(newPolRate);
+        }
+        emit POLRateUpdated(oldPolRate, newPolRate);
+
         uint256 ratioScaled = (newMarketCap * 1e18) / oldMarketCap;
         uint256 newSupply = (oldSupply * ratioScaled) / 1e18;
         require(newSupply > 0, "New supply must be > 0");
 
-        // Calculate the difference in supply
         uint256 supplyDelta;
         bool isIncrease;
         if (newSupply > oldSupply) {
@@ -255,172 +248,133 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             isIncrease = false;
         }
 
-        // Update gonsPerFragment based on the new supply
         _gonsPerFragment = MAX_GONS / newSupply;
-
-        // Update total supply and last market cap
         _totalSupply = newSupply;
         lastMarketCap = newMarketCap;
 
         emit Rebase(oldMarketCap, newMarketCap, ratioScaled, block.timestamp);
 
-        // If supply is increasing, allocate rewards to liquidity pools
         if (isIncrease && lpRewardPercentage > 0 && liquidityPoolList.length > 0) {
             uint256 rewardAmount = (supplyDelta * lpRewardPercentage) / 100;
             _allocateRewardsToLPs(rewardAmount);
         }
-
-        // Update polRate in Public Sale Contract if provided and set
-        if (newPolRate > 0 && address(publicSaleContract) != address(0)) {
-            uint256 oldPolRate = publicSaleContract.polRate();
-            publicSaleContract.updatePOLRate(newPolRate);
-            emit POLRateUpdated(oldPolRate, newPolRate);
-        }
     }
 
-    /**
-     * @notice Allocate rewards to liquidity pools proportionally based on their current holdings.
-     * @param rewardAmount The total amount of tokens to distribute as rewards.
-     */
     function _allocateRewardsToLPs(uint256 rewardAmount) internal {
         uint256 totalLpSupply = 0;
-
-        // Calculate the total C100 held by all liquidity pools
         for (uint256 i = 0; i < liquidityPoolList.length; i++) {
             totalLpSupply += balanceOf(liquidityPoolList[i]);
         }
+        require(totalLpSupply > 0, "No LP supply");
 
-        require(totalLpSupply > 0, "Total LP supply is zero");
-
-        // Distribute rewards proportionally
         for (uint256 i = 0; i < liquidityPoolList.length; i++) {
             address pool = liquidityPoolList[i];
             uint256 poolBalance = balanceOf(pool);
             uint256 poolReward = (rewardAmount * poolBalance) / totalLpSupply;
             _gonsBalances[pool] += poolReward * _gonsPerFragment;
-
             emit Transfer(address(this), pool, poolReward);
         }
 
-        // Update total supply to include rewards
         _totalSupply += rewardAmount;
     }
 
-    // ---------------------------------------
-    // Admin Functions (Owner or Governor)
-    // ---------------------------------------
+    // Price Calculation
+    function _getPolRateFromPools() internal view returns (uint256) {
+        // Primary attempt: C100/POL pool
+        if (c100POLPool != address(0)) {
+            (uint112 reserve0, uint112 reserve1,) = IUniswapV2Pair(c100POLPool).getReserves();
+            address t0 = IUniswapV2Pair(c100POLPool).token0();
+            (uint256 c100Reserve, uint256 polReserve) = t0 == address(this) 
+                ? (uint256(reserve0), uint256(reserve1)) 
+                : (uint256(reserve1), uint256(reserve0));
+            
+            if (polReserve > 0) {
+                // C100 per POL = c100Reserve/polReserve * 1e18 scaling
+                return (c100Reserve * 1e18) / polReserve;
+            }
+        }
 
-    /**
-     * @notice Set the governor contract address. Once set, both owner and gov contract share admin rights.
-     * @param _govContract The address of the new governor contract.
-     */
+        // Fallback: use C100/USDC pool and polInUSDCRate
+        require(c100USDCPool != address(0), "No POL pool, no USDC pool");
+        require(polInUSDCRate > 0, "polInUSDCRate not set");
+
+        (uint112 r0, uint112 r1,) = IUniswapV2Pair(c100USDCPool).getReserves();
+        address token0 = IUniswapV2Pair(c100USDCPool).token0();
+        (uint256 c100R, uint256 usdcR) = token0 == address(this) 
+            ? (uint256(r0), uint256(r1)) 
+            : (uint256(r1), uint256(r0));
+        require(c100R > 0, "No C100 in USDC pool");
+
+        // c100PriceInUSDC = USDC per C100 * 1e18
+        uint256 c100PriceInUSDC = (usdcR * 1e18) / c100R;
+
+        // polInUSDCRate = USDC per POL * 1e18
+        // C100 per POL = polInUSDCRate / c100PriceInUSDC
+        require(c100PriceInUSDC > 0, "Invalid USDC ratio");
+        return polInUSDCRate * 1e18 / c100PriceInUSDC;
+    }
+
+    // Admin functions
     function setGovernorContract(address _govContract) external onlyOwner {
         address oldGov = govContract;
         govContract = _govContract;
         emit GovernorContractSet(oldGov, _govContract);
     }
 
-    /**
-     * @notice Set the Public Sale contract address. Can be set once or updated if needed.
-     * @param _publicSaleContract The address of the C100PublicSale contract.
-     */
     function setPublicSaleContract(address _publicSaleContract) external onlyOwner {
-        require(_publicSaleContract != address(0), "Public sale contract zero");
+        require(_publicSaleContract != address(0), "Public sale zero");
         address oldSale = address(publicSaleContract);
         publicSaleContract = IC100PublicSale(_publicSaleContract);
         emit PublicSaleContractSet(oldSale, _publicSaleContract);
     }
 
-    /**
-     * @notice Pause the contract (pauses transfers, approvals, etc.)
-     * Future governance could call this if needed.
-     */
     function pauseContract() external onlyAdmin {
         _pause();
     }
 
-    /**
-     * @notice Unpause the contract.
-     */
     function unpauseContract() external onlyAdmin {
         _unpause();
     }
 
-    /**
-     * @notice Update the rebase frequency. For future use if we want to enforce time constraints.
-     * @param newFrequency The new frequency parameter (e.g., in seconds).
-     */
     function setRebaseFrequency(uint256 newFrequency) external onlyAdmin {
         rebaseFrequency = newFrequency;
     }
 
-    /**
-     * @notice Enable or disable transfer fees and set fee basis points.
-     * @param enabled True to enable, false to disable transfer fee.
-     * @param newFeeBasisPoints The new fee in basis points (e.g., 100 = 1%).
-     */
     function setTransferFeeParams(bool enabled, uint256 newFeeBasisPoints) external onlyAdmin {
-        require(newFeeBasisPoints <= 1000, "Fee too high"); // e.g., max 10%
+        require(newFeeBasisPoints <= 1000, "Fee too high");
         transfersWithFee = enabled;
         transferFeeBasisPoints = newFeeBasisPoints;
         emit FeeParametersUpdated(enabled, newFeeBasisPoints);
     }
 
-    /**
-     * @notice Update the treasury address. Initially set to owner, can change when governance is established.
-     * @param newTreasury The new treasury address.
-     */
     function updateTreasuryAddress(address newTreasury) external onlyAdmin {
-        require(newTreasury != address(0), "Treasury zero");
+        require(newTreasury != address(0), "Zero");
         address old = treasury;
         treasury = newTreasury;
         emit TreasuryAddressUpdated(old, newTreasury);
     }
 
-    /**
-     * @notice Admin can burn tokens from treasury, reducing supply. This is the "occasional reduction in supply".
-     * @param amount The amount of tokens to burn from treasury.
-     */
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
-        require(balanceOf(treasury) >= amount, "Not enough tokens in treasury");
+        require(balanceOf(treasury) >= amount, "Not enough tokens");
         uint256 gonsAmount = amount * _gonsPerFragment;
         _gonsBalances[treasury] -= gonsAmount;
         _totalSupply -= amount;
-
-        // Adjust gonsPerFragment since total supply changed
         _gonsPerFragment = MAX_GONS / _totalSupply;
-
         emit Transfer(treasury, address(0), amount);
     }
 
-    // ---------------------------------------
-    // LP Reward Management Functions
-    // ---------------------------------------
-
-    /**
-     * @notice Add a liquidity pool address to receive rewards.
-     * @param pool The liquidity pool address to add.
-     */
     function addLiquidityPool(address pool) external onlyAdmin {
-        require(pool != address(0), "Pool address cannot be zero");
-        require(!liquidityPools[pool], "Pool already registered");
-
+        require(pool != address(0), "Zero");
+        require(!liquidityPools[pool], "Already registered");
         liquidityPools[pool] = true;
         liquidityPoolList.push(pool);
-
         emit LiquidityPoolAdded(pool);
     }
 
-    /**
-     * @notice Remove a liquidity pool address from receiving rewards.
-     * @param pool The liquidity pool address to remove.
-     */
     function removeLiquidityPool(address pool) external onlyAdmin {
-        require(liquidityPools[pool], "Pool not registered");
-
+        require(liquidityPools[pool], "Not registered");
         liquidityPools[pool] = false;
 
-        // Remove from liquidityPoolList array
         for (uint256 i = 0; i < liquidityPoolList.length; i++) {
             if (liquidityPoolList[i] == pool) {
                 liquidityPoolList[i] = liquidityPoolList[liquidityPoolList.length - 1];
@@ -432,29 +386,37 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         emit LiquidityPoolRemoved(pool);
     }
 
-    /**
-     * @notice Set the LP reward percentage.
-     * @param _lpRewardPercentage The new reward percentage (e.g., 5 for 5%).
-     */
     function setLpRewardPercentage(uint256 _lpRewardPercentage) external onlyAdmin {
-        require(_lpRewardPercentage <= maxLpRewardPercentage, "Reward percentage exceeds max limit");
+        require(_lpRewardPercentage <= maxLpRewardPercentage, "Exceeds max limit");
         lpRewardPercentage = _lpRewardPercentage;
         emit LpRewardPercentageUpdated(_lpRewardPercentage);
     }
 
-    /**
-     * @notice Set the maximum LP reward percentage.
-     * @param _maxLpRewardPercentage The new maximum reward percentage (e.g., 15 for 15%).
-     */
     function setMaxLpRewardPercentage(uint256 _maxLpRewardPercentage) external onlyAdmin {
-        require(_maxLpRewardPercentage <= 50, "Max LP reward percentage too high"); // Example: 50% cap
+        require(_maxLpRewardPercentage <= 50, "Too high");
         maxLpRewardPercentage = _maxLpRewardPercentage;
         emit MaxLpRewardPercentageUpdated(_maxLpRewardPercentage);
     }
 
-    // ---------------------------------------
-    // Fallback Functions
-    // ---------------------------------------
+    function setC100USDCPool(address pool) external onlyAdmin {
+        address old = c100USDCPool;
+        c100USDCPool = pool;
+        emit C100USDCPoolSet(old, pool);
+    }
+
+    function setC100POLPool(address pool) external onlyAdmin {
+        address old = c100POLPool;
+        c100POLPool = pool;
+        emit C100POLPoolSet(old, pool);
+    }
+
+    function setPolInUSDCRate(uint256 newRate) external onlyAdmin {
+        require(newRate > 0, "Rate must be >0");
+        uint256 old = polInUSDCRate;
+        polInUSDCRate = newRate;
+        emit PolInUSDCRateUpdated(old, newRate);
+    }
+
     receive() external payable {
         revert("No ETH");
     }
@@ -462,13 +424,4 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     fallback() external payable {
         revert("No ETH");
     }
-}
-
-/**
- * @title IC100PublicSale
- * @notice Interface to interact with the C100PublicSale contract.
- */
-interface IC100PublicSale {
-    function polRate() external view returns (uint256);
-    function updatePOLRate(uint256 newRate) external;
 }
