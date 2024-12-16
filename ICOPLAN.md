@@ -1,202 +1,213 @@
-# COIN100 ICO Plan (Simplicity-Focused)
+# COIN100 Deployment & ICO Execution Plan
 
 ## Table of Contents
 
 1. [Introduction](#introduction)  
 2. [Goals and Principles](#goals-and-principles)  
 3. [Token Deployment](#token-deployment)  
-   3.1. Initial Token Parameters  
-   3.2. Owner Allocation (3%)  
-   3.3. Relationship to the Index Fund Concept  
-4. [ICO (Public Sale) Deployment](#ico-public-sale-deployment)  
-   4.1. Defining Sale Parameters  
-   4.2. Accepted Payment Methods (MATIC, USDC, etc.)  
-   4.3. Price and Duration  
-5. [Conducting the ICO](#conducting-the-ico)  
-   5.1. Marketing and Communication  
-   5.2. Investor Participation  
-   5.3. Daily Upkeep and Rebase During ICO  
-6. [Post-ICO Finalization](#post-ico-finalization)  
-   6.1. Ending the ICO  
-   6.2. Burning Unsold Tokens  
-   6.3. Rationale for Burning  
-7. [Maintaining the Index Post-ICO](#maintaining-the-index-post-ico)  
-   7.1. Ongoing Daily/Periodic Rebase  
-   7.2. Transparent Value Tracking  
-8. [Future Governance Introduction](#future-governance-introduction)  
-   8.1. Governor Contract Deployment (Later Phase)  
-   8.2. Community Decision-Making  
-   8.3. Transitioning Control from Owner to Governance  
-9. [Chronological Checklist](#chronological-checklist)  
-10. [Conclusion](#conclusion)
-
-
----
-
-## 1. Introduction
-
-COIN100 (C100) is designed to represent a dynamic, rebasing index of the top 100 cryptocurrencies by market cap. To fund development and distribution of tokens, an Initial Coin Offering (ICO) will be held. The approach described here prioritizes simplicity and clarity:
-
-- Deploy token first.
-- Deploy a public sale contract and run the ICO.
-- At the end of the ICO, burn any unsold tokens to ensure a clean, accurate index representation.
-- At a later stage, introduce a governor contract to enable decentralized governance.
-
----
-
-## 2. Goals and Principles
-
-- **Simplicity:** A clear and linear progression from token deployment to ICO to post-ICO cleanup.
-- **Fairness:** All participants get the same proportional benefits from market cap-driven rebase adjustments.
-- **Transparency:** Unsold tokens are removed from circulation to prevent confusion and maintain trust.
-- **Future-Proofing:** Governance can be introduced later for advanced community-driven decisions.
+   3.1. [Initial Token Parameters](#initial-token-parameters)  
+   3.2. [Owner Allocation (3%)](#owner-allocation-3)  
+   3.3. [Index Fund Concept Integration](#index-fund-concept-integration)  
+4. [Public Sale (ICO) Deployment](#public-sale-ico-deployment)  
+   4.1. [Defining ICO Parameters](#defining-ico-parameters)  
+   4.2. [Accepted Payment Methods](#accepted-payment-methods)  
+   4.3. [Initial polRate and Temporary Pricing](#initial-polrate-and-temporary-pricing)  
+5. [Liquidity Pool Setup](#liquidity-pool-setup)  
+   5.1. [C100/USDC Pool Creation](#c100usdc-pool-creation)  
+   5.2. [C100/POL Pool Creation](#c100pol-pool-creation)  
+   5.3. [Setting Pool Addresses in Contracts](#setting-pool-addresses-in-contracts)  
+   5.4. [Fallback Logic (polInUSDCRate)](#fallback-logic-polinusdcrate)  
+6. [Performing Initial Administrative Actions](#performing-initial-administrative-actions)  
+   6.1. [Linking PublicSale to C100](#linking-publicsale-to-c100)  
+   6.2. [Transferring Tokens to PublicSale](#transferring-tokens-to-publicsale)  
+   6.3. [Setting Governor Contract (Optional)](#setting-governor-contract-optional)  
+   6.4. [Adjusting Fees, Treasury, and LP Rewards](#adjusting-fees-treasury-and-lp-rewards)  
+7. [Conducting the ICO](#conducting-the-ico)  
+   7.1. [Marketing and Communication](#marketing-and-communication)  
+   7.2. [Investor Participation](#investor-participation)  
+   7.3. [Dynamic polRate Updates via Rebases](#dynamic-polrate-updates-via-rebases)  
+8. [Rebase Operations During and After ICO](#rebase-operations-during-and-after-ico)  
+   8.1. [Periodic Rebase Calls](#periodic-rebase-calls)  
+   8.2. [Synchronizing polRate with PublicSale](#synchronizing-polrate-with-publicsale)  
+   8.3. [Fallback Conditions if Liquidity is Insufficient](#fallback-conditions-if-liquidity-is-insufficient)  
+9. [Post-ICO Finalization](#post-ico-finalization)  
+   9.1. [Ending the ICO](#ending-the-ico)  
+   9.2. [Burning Unsold Tokens](#burning-unsold-tokens)  
+   9.3. [Transition to Post-ICO Market Phase](#transition-to-post-ico-market-phase)  
+10. [Ongoing Maintenance](#ongoing-maintenance)  
+    10.1. [Regular Market Cap Updates](#regular-market-cap-updates)  
+    10.2. [Adjusting LP Pools, polInUSDCRate, or Fee Parameters](#adjusting-lp-pools-polinusdcrate-or-fee-parameters)  
+    10.3. [Transparency and Community Involvement](#transparency-and-community-involvement)  
+11. [Future Governance Introduction](#future-governance-introduction)  
+    11.1. [Deploying Governor Contract Later](#deploying-governor-contract-later)  
+    11.2. [Community Decision-Making and Voting](#community-decision-making-and-voting)  
+    11.3. [Transitioning Control from Owner to Governance](#transitioning-control-from-owner-to-governance)  
+12. [Chronological Checklist](#chronological-checklist)  
+13. [Conclusion](#conclusion)
 
 ---
 
-## 3. Token Deployment
+## Introduction
+This document provides a comprehensive plan for deploying the COIN100 (C100) token, setting up a public sale (ICO), establishing liquidity pools for dynamic pricing (polRate), and handling ongoing maintenance and future governance transitions.
 
-### 3.1 Initial Token Parameters
+## Goals and Principles
+- **Transparency:** Ensure every step is clear to stakeholders and investors.
+- **Stability:** Dynamically reference on-chain liquidity pools to determine polRate.
+- **Flexibility:** Allow fallback mechanisms and periodic adjustments to respond to market conditions.
+- **Growth Path to Decentralized Governance:** Initially admin-driven, with plans to introduce community governance.
 
-- **Initial Supply:** Set equal to the initial top 100 market cap (e.g., `M0` units of C100).
-- **Decimals:** 18 decimals to maintain standard ERC20 compatibility.
-- **Owner Allocation (3%):** The token contract mints the entire supply to the owner’s address. The owner keeps 3% and prepares to use the remaining 97% for the public sale.
+## Token Deployment
 
-### 3.2 Owner Allocation (3%)
-
-The owner retains 3% of the supply as a reward for performing initial upkeep and shouldering early administrative overhead. This allocation is clearly defined and minted at deployment.
-
-### 3.3 Relationship to the Index Fund Concept
-
-The token’s total supply starts as a direct mapping to the top 100 market cap. Daily or periodic rebasing will adjust everyone’s balances proportionally, ensuring each C100 token always represents the same fraction of the index.
-
----
-
-## 4. ICO (Public Sale) Deployment
-
-### 4.1 Defining Sale Parameters
-
-- **Percentage for Sale:** Approximately 97% of the supply is allocated for the ICO.
-- **ICO Contract:** Deploy a separate crowdsale contract that:
-  - Receives the 97% of tokens from the owner.
-  - Sells these tokens to contributors in exchange for MATIC, USDC, or another predetermined currency.
+### Initial Token Parameters
+- Deploy `COIN100(initialMarketCap, initialPolRate)`:
+  - `initialMarketCap`: Sets the initial total supply.
+  - `initialPolRate`: A starting polRate for the system before pools are established.
   
-### 4.2 Accepted Payment Methods (MATIC, USDC, etc.)
+### Owner Allocation (3%)
+- 3% of the total supply goes to the owner, with the remaining 97% also initially controlled by the owner’s account.
+- The owner can decide how much to allocate to the PublicSale contract.
 
-The crowdsale contract can be designed to accept multiple payment methods. For simplicity, start with one primary payment method (e.g., MATIC) and optionally support USDC with a fixed rate.
+### Index Fund Concept Integration
+- C100’s supply rebases daily/periodically to reflect changes in the top 100 crypto market cap.
+- This underpins the token’s value proposition as an index tracker.
 
-### 4.3 Price and Duration
+## Public Sale (ICO) Deployment
 
-- **Price:** Establish a fixed conversion rate (e.g., 1 MATIC = 1000 C100) for the ICO period.
-- **Duration:** A defined timeframe (e.g., 12 months) during which contributions are accepted.
+### Defining ICO Parameters
+- Deploy `C100PublicSale(c100Address, treasury, startTime, endTime, initialPolRate)`.
+- `startTime` and `endTime` define the ICO window.
+- `treasury`: Where raised funds (POL and tokens) go.
+- `initialPolRate`: Matches or closely aligns with the initial polRate set in C100.
 
----
+### Accepted Payment Methods
+- POL (chain’s native token, e.g., MATIC) and possibly USDC or other ERC20 tokens (set via `updateErc20Rate()`).
 
-## 5. Conducting the ICO
+### Initial polRate and Temporary Pricing
+- Until liquidity pools are set, rely on `initialPolRate`.
+- Once pools are ready, `rebase()` will fetch live polRate from the pools.
 
-### 5.1 Marketing and Communication
+## Liquidity Pool Setup
 
-- Announce start and end times, accepted currencies, and token rates on your website (coin100.link).
-- Provide user instructions and connect wallet integrations.
+### C100/USDC Pool Creation
+- On a DEX, create a C100/USDC pool to establish a stable reference price in USD terms.
+- Add liquidity to target a desired initial price (e.g., $0.001 per C100).
 
-### 5.2 Investor Participation
+### C100/POL Pool Creation
+- Create a C100/POL pool to get a direct on-chain polRate (C100 per POL).
+- Ensure sufficient liquidity for stable pricing.
 
-- Investors visit coin100.link.
-- Connect their wallet (e.g., MetaMask) and send MATIC/USDC to the crowdsale contract.
-- Instantly receive C100 tokens at the prescribed rate.
+### Setting Pool Addresses in Contracts
+- Use `c100Contract.setC100USDCPool(...)` and `c100Contract.setC100POLPool(...)` to register pool addresses.
+- The C100 contract will now have references to fetch prices.
 
-### 5.3 Daily Upkeep and Rebase During ICO
+### Fallback Logic (polInUSDCRate)
+- If the C100/POL pool fails or lacks liquidity, fallback to C100/USDC combined with a known `polInUSDCRate`.
+- Set `c100Contract.setPolInUSDCRate(...)` if using fallback logic.
 
-- The daily/periodic rebase occurs as planned.  
-- The public sale contract’s unsold tokens also get rebased, maintaining their fractional representation of the index.
+## Performing Initial Administrative Actions
 
----
+### Linking PublicSale to C100
+- `c100Contract.setPublicSaleContract(publicSaleAddress)`
+- This allows C100 to push updated polRate to PublicSale after each rebase.
 
-## 6. Post-ICO Finalization
+### Transferring Tokens to PublicSale
+- Transfer tokens to `publicSaleAddress` so it can sell to investors.
+- `c100Contract.transfer(publicSaleAddress, tokensForSale)`
 
-### 6.1 Ending the ICO
+### Setting Governor Contract (Optional)
+- If governance is planned:
+  - `c100Contract.setGovernorContract(govContractAddress)`
+  - `publicSaleContract.setGovernorContract(govContractAddress)`
 
-- At the conclusion of the 12-month ICO window, no further purchases are allowed.
-- The final state: some tokens are sold and now distributed among many holders. Some tokens may remain unsold in the public sale contract.
+### Adjusting Fees, Treasury, and LP Rewards
+- `c100Contract.setTransferFeeParams(enabled, feeBasisPoints)`
+- `c100Contract.updateTreasuryAddress(newTreasury)`
+- `c100Contract.setLpRewardPercentage(percent)`
 
-### 6.2 Burning Unsold Tokens
+## Conducting the ICO
 
-- Immediately burn any remaining unsold tokens in the public sale contract.
-- This action ensures that the total supply now corresponds only to tokens held by actual participants and the 3% owner allocation.
+### Marketing and Communication
+- Announce sale details and how to participate.
+- Provide clarity on how polRate dynamically updates from pools.
 
-### 6.3 Rationale for Burning
+### Investor Participation
+- Investors buy C100 from PublicSale using POL or allowed tokens.
+- As polRate updates at rebase, prices remain aligned with market conditions.
 
-- Eliminates distortions caused by non-circulating tokens.
-- Ensures future rebases accurately reflect the true circulating supply.
-- Enhances trust and simplicity—no idle tokens remain.
+### Dynamic polRate Updates via Rebases
+- Each `rebase(newMarketCap)` call in C100:
+  - Fetches new polRate from pools.
+  - Updates PublicSale polRate accordingly.
+  - Adjusts total supply to reflect index changes.
 
----
+## Rebase Operations During and After ICO
 
-## 7. Maintaining the Index Post-ICO
+### Periodic Rebase Calls
+- Likely daily or as per strategy.
+- Reflects index growth or contraction.
 
-### 7.1 Ongoing Daily/Periodic Rebase
+### Synchronizing polRate with PublicSale
+- Automatic in `rebase()`; no manual updates needed once pools are set.
 
-- Continue performing manual upkeep calls that adjust supply based on the top 100 market cap.
-- Now that only actively held tokens exist, every holder’s balance changes proportionally and transparently.
+### Fallback Conditions if Liquidity is Insufficient
+- If no C100/POL liquidity:
+  - Use C100/USDC + `polInUSDCRate`.
+- If no pools at all, continue using last known polRate or consider reverting rebase until setup is corrected.
 
-### 7.2 Transparent Value Tracking
+## Post-ICO Finalization
 
-- Users can verify that their tokens truly represent an undiluted fraction of the index’s market cap.
-- The market price should reflect the index’s performance over time.
+### Ending the ICO
+- After `endTime`, call `publicSaleContract.finalize()`.
+- No more purchases allowed.
 
----
+### Burning Unsold Tokens
+- Unsold tokens are burned (transferred to `0x...dEaD`) to reduce supply dilution.
 
-## 8. Future Governance Introduction
+### Transition to Post-ICO Market Phase
+- The token now trades freely on DEXs.
+- polRate updates continue with rebases, maintaining alignment with market-driven liquidity pools.
 
-### 8.1 Governor Contract Deployment (Later Phase)
+## Ongoing Maintenance
 
-- After the ecosystem matures, deploy a governor contract and possibly a timelock.
-- The governor contract allows token holders to propose and vote on changes.
+### Regular Market Cap Updates
+- Keep feeding `newMarketCap` at each rebase.
+- Maintain the index accuracy.
 
-### 8.2 Community Decision-Making
+### Adjusting LP Pools, polInUSDCRate, or Fee Parameters
+- If market changes, admin can:
+  - Update fallback rate (`setPolInUSDCRate()`).
+  - Change LP pools if needed.
+  - Adjust fees or treasury address.
 
-- Governance can decide on future enhancements, allocation of treasury funds, and protocol parameters.
-- Gradually transition decision-making from the owner to the governor contract, promoting decentralization.
+### Transparency and Community Involvement
+- Communicate updates, rebase schedules, and rationale for changes.
+- Eventually introduce more governance-driven decision-making.
 
-### 8.3 Transitioning Control
+## Future Governance Introduction
 
-- Eventually, the owner’s admin keys can be relinquished to governance.
-- The community takes the reins of the project’s direction and policy-making.
+### Deploying Governor Contract Later
+- Once ecosystem matures, deploy a governance contract.
+- Transfer certain admin rights from owner to govContract.
 
----
+### Community Decision-Making and Voting
+- Token holders vote on proposals.
+- Decide on LP reward percentages, fee adjustments, etc.
 
-## 9. Chronological Checklist
+### Transitioning Control from Owner to Governance
+- Gradually reduce owner’s influence.
+- Enhance decentralization and community trust.
 
-1. **Deploy Token Contract**  
-   - Mint total supply to owner.
-   - Owner keeps 3%, intends to sell 97%.
+## Chronological Checklist
+1. Deploy `COIN100` and `C100PublicSale` contracts.
+2. Set PublicSale in C100.
+3. Transfer tokens to PublicSale.
+4. Create and fund C100/USDC and C100/POL pools.
+5. Set pool addresses and optional fallback rate in C100.
+6. Unpause if paused.
+7. Start ICO at `startTime`; users buy tokens.
+8. Rebase daily: updates polRate and reflects market cap.
+9. After `endTime`, finalize ICO and burn unsold tokens.
+10. Continue rebasing post-ICO. Introduce governance as project matures.
 
-2. **Deploy Public Sale Contract**  
-   - Transfer 97% of tokens from owner to this contract.
-   - Set pricing and duration parameters.
-
-3. **Start ICO**  
-   - Advertise on coin100.link.
-   - Investors buy tokens during the next 12 months.
-   - Perform daily/periodic rebases as planned.
-
-4. **ICO Ends**  
-   - Stop accepting contributions.
-   - Unsold tokens remain in the public sale contract.
-
-5. **Burn Unsold Tokens**  
-   - Immediately burn any tokens not sold.
-   - Supply now reflects only actual holders + 3% owner share.
-
-6. **Continue Index Operations**  
-   - Keep performing upkeep and rebases.
-   - Token supply and holder balances now cleanly track the top 100 market cap changes.
-
-7. **Later: Deploy Governance Contracts**  
-   - Introduce a governor and timelock controller after the market stabilizes.
-   - Over time, shift decision-making powers to the community.
-
----
-
-## 10. Conclusion
-
-This simplicity-focused approach ensures a straightforward, fair, and transparent ICO process aligned with the C100 token’s index fund concept. By burning unsold tokens at the end of the ICO, the circulating supply remains meaningful and unambiguous. Future governance introduction can follow once the community is established, ensuring that the token’s long-term evolution is driven by its stakeholders rather than a single centralized authority.
+## Conclusion
+This plan ensures a smooth, dynamic, and transparent deployment and ICO execution. By leveraging on-chain liquidity pools to determine polRate and providing a fallback mechanism, the system remains robust and adaptable. Over time, governance can transition from a centralized admin model to a community-driven process, aligning with industry best practices and the project’s long-term vision.
