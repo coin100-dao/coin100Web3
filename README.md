@@ -92,7 +92,7 @@ C100 emphasizes simplicity in its public sale to ensure broad accessibility and 
 - **Initial Price:** Approximately $1 per C100 token, assuming pairing with a stable asset in a DEX.
 
 ### Distribution (Owner Allocation & ICO)
-- **Owner Allocation:** 10% of total supply is retained by the owner for development, liquidity provision, and other strategic purposes.
+- **Owner Allocation:** 3% of total supply is retained by the owner for development, liquidity provision, and other strategic purposes.
 - **ICO Allocation:** 90% of total supply is allocated for the Initial Coin Offering (ICO), enabling widespread distribution and community participation.
 
 ### Rebase Formula ("Genius" Formula)
@@ -161,12 +161,79 @@ Smart contract auditing and community code reviews will enhance trust and securi
 Admins can rescue non-C100 tokens sent to the contract and burn unsold C100 tokens post-ICO. Additionally, tokens can be burned from the treasury to manage supply and support market stability.
 
 ## Roadmap
-- **Phase 1:** Token and ICO launch, manual upkeep.
-- **Phase 2:** Introduce governance, set governor contract.
-- **Phase 3:** Integrate oracles for automated updates.
-- **Phase 4:** Community-driven proposals for enhancements, treasury usage, fee adjustments.
-- **Phase 5:** Implement configurable liquidity provider reward mechanisms, scaling, and ecosystem expansion.
-- **Phase 6:** Ongoing refinement, security audits, and feature additions based on community feedback.
+Our journey to revolutionize crypto index investing:
+
+### Phase 1: Launch
+- Smart Contract Development
+  - Core token contract implementation
+  - ICO contract development
+  - Security features integration
+- Security Audits
+  - Multiple independent audits
+  - Bug bounty program
+  - Community code review
+- Initial Community Building
+  - Social media presence establishment
+  - Community channels setup
+  - Educational content creation
+- ICO Launch
+  - Public sale initiation
+  - Liquidity pool creation
+  - Initial market making
+
+### Phase 2: Growth
+- Exchange Listings
+  - DEX integrations
+  - CEX partnerships
+  - Market maker relationships
+- Marketing Campaigns
+  - Brand awareness initiatives
+  - Influencer collaborations
+  - Educational webinars
+- Community Expansion
+  - Ambassador program
+  - Regional community groups
+  - Content creator network
+- Partnership Development
+  - Strategic alliances
+  - Integration partnerships
+  - Cross-protocol collaborations
+
+### Phase 3: Evolution
+- Oracle Integration
+  - Chainlink implementation
+  - Automated market cap tracking
+  - Price feed optimization
+- Automated Rebase System
+  - Smart contract upgrades
+  - Automated execution
+  - Fail-safe mechanisms
+- Enhanced Market Analytics
+  - Real-time tracking dashboard
+  - Performance metrics
+  - Market insight tools
+- Additional Trading Pairs
+  - New liquidity pools
+  - Cross-chain bridges
+  - Synthetic asset integration
+
+### Phase 4: Maturity
+- Governance Implementation
+  - DAO structure setup
+  - Voting mechanisms
+  - Proposal framework
+- Community DAO
+  - Treasury management
+  - Parameter control
+  - Development funding
+- Advanced Security Features
+  - Multi-sig implementations
+  - Emergency response system
+  - Enhanced audit coverage
+- Cross-chain Integration
+  - Layer 2 solutions
+  - Multiple blockchain support
+  - Unified liquidity management
 
 ## ICO Plan (Simplicity-Focused)
 
