@@ -92,8 +92,8 @@ C100 emphasizes simplicity in its public sale to ensure broad accessibility and 
 - **Initial Price:** Approximately $1 per C100 token, assuming pairing with a stable asset in a DEX.
 
 ### Distribution (Owner Allocation & ICO)
-- **Owner Allocation:** 3% of total supply is retained by the owner for development, liquidity provision, and other strategic purposes.
-- **ICO Allocation:** 97% of total supply is allocated for the Initial Coin Offering (ICO), enabling widespread distribution and community participation.
+- **Owner Allocation:** 10% of total supply is retained by the owner for development, liquidity provision, and other strategic purposes.
+- **ICO Allocation:** 90% of total supply is allocated for the Initial Coin Offering (ICO), enabling widespread distribution and community participation.
 
 ### Rebase Formula ("Genius" Formula)
 **ratio = M_new / M_old**  
@@ -120,7 +120,7 @@ Deployed on Polygon for low gas fees and high throughput, ensuring efficient and
 Implements ERC20 standards, rebase logic, ownership control, pause/unpause functionalities, transfer fee mechanisms, liquidity provider rewards allocation, and integration points for future governance.
 
 ### ICO (Public Sale) Contract
-Handles the initial distribution of 97% tokens. Investors purchase C100 with POL or approved ERC20 tokens (e.g., USDC) during the ICO period. Unsold tokens are burned at the end, ensuring only the circulating supply reflects real participants. Additionally, during the ICO, a configurable reward percentage is allocated to liquidity providers from the transaction fees to incentivize liquidity provisioning.
+Handles the initial distribution of 90% tokens. Investors purchase C100 with POL or approved ERC20 tokens (e.g., USDC) during the ICO period. Unsold tokens are burned at the end, ensuring only the circulating supply reflects real participants. Additionally, during the ICO, a configurable reward percentage is allocated to liquidity providers from the transaction fees to incentivize liquidity provisioning.
 
 ### Scaling and GonsPerFragment
 Balances are tracked in a large integer unit called “gons.” The global `gonsPerFragment` variable determines how these translate into user balances. On rebase, adjusting `gonsPerFragment` updates everyone’s balance proportionally in O(1) complexity.
@@ -246,11 +246,11 @@ After the ICO:
 15. **Q:** Does the owner get special treatment in rebases?  
     **A:** No, after initial allocation, the owner’s tokens also rebase equally.
 
-16. **Q:** What happens to the remaining 97% at launch?  
+16. **Q:** What happens to the remaining 90% at launch?  
     **A:** It’s used for ICO or directly to provide liquidity and let the market buy freely.
 
 17. **Q:** Is there an ICO?  
-    **A:** Yes, the owner may run an ICO to distribute the 97% of tokens.
+    **A:** Yes, the owner may run an ICO to distribute the 90% of tokens.
 
 18. **Q:** What if not all tokens sell in the ICO?  
     **A:** Unsold tokens are burned at the end of the ICO.

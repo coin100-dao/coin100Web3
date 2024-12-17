@@ -6,7 +6,7 @@
 2. [Goals and Principles](#goals-and-principles)  
 3. [Token Deployment](#token-deployment)  
    3.1. [Initial Token Parameters](#initial-token-parameters)  
-   3.2. [Owner Allocation (3%)](#owner-allocation-3)  
+   3.2. [Owner Allocation (10%)](#owner-allocation-3)  
    3.3. [Index Fund Concept Integration](#index-fund-concept-integration)  
 4. [Public Sale (ICO) Deployment](#public-sale-ico-deployment)  
    4.1. [Defining ICO Parameters](#defining-ico-parameters)  
@@ -69,8 +69,8 @@ This document provides a comprehensive plan for deploying the COIN100 (C100) tok
   - `initialMarketCap`: Sets the initial total supply.
   - `initialC100Price`: A starting price for the system before pools are established.
 
-### Owner Allocation (3%)
-- 3% of the total supply goes to the owner, with the remaining 97% also initially controlled by the owner’s account.
+### Owner Allocation (10%)
+- 10% of the total supply goes to the owner, with the remaining 90% also initially controlled by the owner’s account.
 - The owner can decide how much to allocate to the PublicSale contract.
 
 ### Index Fund Concept Integration
