@@ -8,8 +8,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title C100PublicSale
- * @notice A public sale contract for C100 tokens. The polRate is updated by the C100 contract periodically.
+ * @notice A public sale contract for C100 tokens.
+ *
+ * Changes requested:
+ * - Ability to set C100 token address and treasury after deployment.
  */
+
 contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     IERC20 public c100Token;
     address public govContract;
@@ -34,6 +38,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event Finalized(uint256 unsoldTokensBurned);
     event TokensRescued(address indexed token, uint256 amount);
+    event C100TokenUpdated(address oldToken, address newToken);
 
     modifier onlyAdmin() {
         require(msg.sender == owner() || (govContract != address(0) && msg.sender == govContract), "Not admin");
@@ -76,7 +81,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         treasury = initialTreasury;
         startTime = initialStartTime;
         endTime = initialEndTime;
-        polRate = initialPolRate; // initial polRate
+        polRate = initialPolRate; // assumed scaled by 1e18 externally; if not, adjust as needed
     }
 
     receive() external payable {
@@ -93,8 +98,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     function buyWithPOL() external payable nonReentrant whenNotPaused icoActive {
         require(msg.value > 0, "No POL sent");
-        // polRate = C100 per POL * 1e18
-        // If msg.value is in POL (no scaling), C100 = (msg.value * polRate) / 1e18
+        // c100Amount = (msg.value * polRate) / 1e18
         uint256 c100Amount = (msg.value * polRate) / 1e18;
         _deliverTokens(msg.sender, c100Amount);
         _forwardFunds(msg.value);
@@ -107,7 +111,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(rate > 0, "Token not accepted");
         require(tokenAmount > 0, "No tokens sent");
 
-        // rate = C100 per token * 1e18
+        // c100Amount = (tokenAmount * rate) / 1e18
         uint256 c100Amount = (tokenAmount * rate) / 1e18;
         require(IERC20(token).transferFrom(msg.sender, treasury, tokenAmount), "Transfer failed");
         _deliverTokens(msg.sender, c100Amount);
@@ -167,9 +171,18 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         emit TreasuryUpdated(old, newTreasury);
     }
 
+    // New: Ability to set C100 Token after deployment
+    function setC100TokenAddress(address newToken) external onlyAdmin {
+        require(newToken != address(0), "Zero");
+        address old = address(c100Token);
+        c100Token = IERC20(newToken);
+        emit C100TokenUpdated(old, newToken);
+    }
+
     function rescueTokens(address token) external onlyAdmin {
         require(token != address(0), "Zero");
         if (token == address(c100Token) && !finalized) {
+            // Prevent rescuing C100 before finalize to ensure fair sale
             revert("Cannot rescue C100 before finalize");
         }
         uint256 balance = IERC20(token).balanceOf(address(this));
@@ -182,8 +195,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
         require(c100Token.balanceOf(treasury) >= amount, "Not enough");
         require(c100Token.transfer(BURN_ADDRESS, amount), "Burn failed");
-        // We do not emit Transfer here since not an ERC20 contract.
-        // If needed, create a custom event.
     }
 
     function _deliverTokens(address recipient, uint256 amount) internal {

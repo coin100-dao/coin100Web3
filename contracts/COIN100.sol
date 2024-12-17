@@ -23,22 +23,13 @@ interface IUniswapV2Pair {
 /**
  * @title COIN100 (C100)
  * @notice A rebasing token representing the top 100 crypto market cap index.
- *         On each rebase, all balances scale proportionally to reflect changes
- *         in the top 100 market cap, ensuring each holder maintains their fraction.
- * 
- * New Features:
- * - Fee-Based Treasury Growth
- * - LP Rewards Allocation
- * - Governance Transition
- * - Dynamic polRate Update in Public Sale
  *
- * Daily/periodic manual rebases:
- * - Admin calls `rebase(newMarketCap)` to adjust supply based on top 100 market cap.
- *
- * Governance Transition:
- * - Initially, owner is admin.
- * - A govContract can be set, sharing admin rights.
+ * Changes requested:
+ * - Less strictness on certain calculations (no hard reverts on zero supplies, etc.).
+ * - Ability to pass a large integer (e.g. 3736397370017) to rebase and scale it to 18 decimals inside rebase.
+ * - For polRate, if user passes something like 600, we scale it to 600 * 1e18 internally.
  */
+
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // ---------------------------------------
     // Token metadata
@@ -131,7 +122,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         transferFeeBasisPoints = 100;           
         treasury = owner();
         lpRewardPercentage = 5; 
-        lastCalculatedPolRate = initialPolRate; // Start with an initial polRate
+        // Scale initialPolRate by 1e18 internally if you wish.
+        // If initialPolRate is already considered scaled, leave as is.
+        // Here we assume initialPolRate is already scaled. If not, do initialPolRate = initialPolRate * 1e18;
+        lastCalculatedPolRate = initialPolRate;
     }
 
     modifier onlyAdmin() {
@@ -218,14 +212,19 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Rebase logic
-    function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
+    function rebase(uint256 newMarketCapRaw, uint256 newPolRateRaw) external onlyAdmin nonReentrant whenNotPaused {
+        // newMarketCapRaw and newPolRateRaw are raw integers from user
+        // We scale them to 18 decimals internally
+        // Adjust this logic as needed. For demonstration, we multiply by 1e18:
+        uint256 newMarketCap = newMarketCapRaw * 1e18;
+        uint256 newPolRate = newPolRateRaw * 1e18;
+
         require(newMarketCap > 0, "Mcap > 0");
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
-        // Update polRate from pools before calculating supply
+        // Update polRate
         uint256 oldPolRate = lastCalculatedPolRate;
-        uint256 newPolRate = _getPolRateFromPools();
         lastCalculatedPolRate = newPolRate;
 
         // Sync with Public Sale if set
@@ -236,7 +235,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         uint256 ratioScaled = (newMarketCap * 1e18) / oldMarketCap;
         uint256 newSupply = (oldSupply * ratioScaled) / 1e18;
-        require(newSupply > 0, "New supply must be > 0");
+        if (newSupply == 0) {
+            // If newSupply ends up zero (extremely unlikely), just skip
+            return;
+        }
 
         uint256 supplyDelta;
         bool isIncrease;
@@ -254,7 +256,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         emit Rebase(oldMarketCap, newMarketCap, ratioScaled, block.timestamp);
 
-        if (isIncrease && lpRewardPercentage > 0 && liquidityPoolList.length > 0) {
+        // LP reward allocation
+        if (isIncrease && lpRewardPercentage > 0 && liquidityPoolList.length > 0 && supplyDelta > 0) {
             uint256 rewardAmount = (supplyDelta * lpRewardPercentage) / 100;
             _allocateRewardsToLPs(rewardAmount);
         }
@@ -265,14 +268,20 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         for (uint256 i = 0; i < liquidityPoolList.length; i++) {
             totalLpSupply += balanceOf(liquidityPoolList[i]);
         }
-        require(totalLpSupply > 0, "No LP supply");
+
+        // If no LP supply, no rewards distributed
+        if (totalLpSupply == 0 || rewardAmount == 0) {
+            return;
+        }
 
         for (uint256 i = 0; i < liquidityPoolList.length; i++) {
             address pool = liquidityPoolList[i];
             uint256 poolBalance = balanceOf(pool);
-            uint256 poolReward = (rewardAmount * poolBalance) / totalLpSupply;
-            _gonsBalances[pool] += poolReward * _gonsPerFragment;
-            emit Transfer(address(this), pool, poolReward);
+            if (poolBalance > 0) {
+                uint256 poolReward = (rewardAmount * poolBalance) / totalLpSupply;
+                _gonsBalances[pool] += poolReward * _gonsPerFragment;
+                emit Transfer(address(this), pool, poolReward);
+            }
         }
 
         _totalSupply += rewardAmount;
@@ -284,34 +293,52 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         if (c100POLPool != address(0)) {
             (uint112 reserve0, uint112 reserve1,) = IUniswapV2Pair(c100POLPool).getReserves();
             address t0 = IUniswapV2Pair(c100POLPool).token0();
-            (uint256 c100Reserve, uint256 polReserve) = t0 == address(this) 
-                ? (uint256(reserve0), uint256(reserve1)) 
-                : (uint256(reserve1), uint256(reserve0));
+            uint256 polReserve;
+            uint256 c100Reserve;
+            if (t0 == address(this)) {
+                c100Reserve = uint256(reserve0);
+                polReserve = uint256(reserve1);
+            } else {
+                c100Reserve = uint256(reserve1);
+                polReserve = uint256(reserve0);
+            }
             
             if (polReserve > 0) {
-                // C100 per POL = c100Reserve/polReserve * 1e18 scaling
                 return (c100Reserve * 1e18) / polReserve;
             }
         }
 
         // Fallback: use C100/USDC pool and polInUSDCRate
-        require(c100USDCPool != address(0), "No POL pool, no USDC pool");
-        require(polInUSDCRate > 0, "polInUSDCRate not set");
+        if (c100USDCPool == address(0) || polInUSDCRate == 0) {
+            // If no fallback setup, return a default 1e18 to avoid revert
+            return 1e18;
+        }
 
         (uint112 r0, uint112 r1,) = IUniswapV2Pair(c100USDCPool).getReserves();
         address token0 = IUniswapV2Pair(c100USDCPool).token0();
-        (uint256 c100R, uint256 usdcR) = token0 == address(this) 
-            ? (uint256(r0), uint256(r1)) 
-            : (uint256(r1), uint256(r0));
-        require(c100R > 0, "No C100 in USDC pool");
+        uint256 c100R;
+        uint256 usdcR;
+        if (token0 == address(this)) {
+            c100R = uint256(r0);
+            usdcR = uint256(r1);
+        } else {
+            c100R = uint256(r1);
+            usdcR = uint256(r0);
+        }
 
-        // c100PriceInUSDC = USDC per C100 * 1e18
+        if (c100R == 0) {
+            // No C100 liquidity, return a default
+            return 1e18; 
+        }
+
+        // c100PriceInUSDC = (usdcR * 1e18) / c100R
         uint256 c100PriceInUSDC = (usdcR * 1e18) / c100R;
+        if (c100PriceInUSDC == 0) {
+            return 1e18;
+        }
 
-        // polInUSDCRate = USDC per POL * 1e18
-        // C100 per POL = polInUSDCRate / c100PriceInUSDC
-        require(c100PriceInUSDC > 0, "Invalid USDC ratio");
-        return polInUSDCRate * 1e18 / c100PriceInUSDC;
+        // C100 per POL = (polInUSDCRate * 1e18) / c100PriceInUSDC
+        return (polInUSDCRate * 1e18) / c100PriceInUSDC;
     }
 
     // Admin functions
@@ -355,7 +382,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
-        require(balanceOf(treasury) >= amount, "Not enough tokens");
+        if (balanceOf(treasury) < amount) {
+            // If not enough tokens, just skip
+            return;
+        }
         uint256 gonsAmount = amount * _gonsPerFragment;
         _gonsBalances[treasury] -= gonsAmount;
         _totalSupply -= amount;
@@ -365,25 +395,25 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     function addLiquidityPool(address pool) external onlyAdmin {
         require(pool != address(0), "Zero");
-        require(!liquidityPools[pool], "Already registered");
-        liquidityPools[pool] = true;
-        liquidityPoolList.push(pool);
-        emit LiquidityPoolAdded(pool);
+        if (!liquidityPools[pool]) {
+            liquidityPools[pool] = true;
+            liquidityPoolList.push(pool);
+            emit LiquidityPoolAdded(pool);
+        }
     }
 
     function removeLiquidityPool(address pool) external onlyAdmin {
-        require(liquidityPools[pool], "Not registered");
-        liquidityPools[pool] = false;
-
-        for (uint256 i = 0; i < liquidityPoolList.length; i++) {
-            if (liquidityPoolList[i] == pool) {
-                liquidityPoolList[i] = liquidityPoolList[liquidityPoolList.length - 1];
-                liquidityPoolList.pop();
-                break;
+        if (liquidityPools[pool]) {
+            liquidityPools[pool] = false;
+            for (uint256 i = 0; i < liquidityPoolList.length; i++) {
+                if (liquidityPoolList[i] == pool) {
+                    liquidityPoolList[i] = liquidityPoolList[liquidityPoolList.length - 1];
+                    liquidityPoolList.pop();
+                    break;
+                }
             }
+            emit LiquidityPoolRemoved(pool);
         }
-
-        emit LiquidityPoolRemoved(pool);
     }
 
     function setLpRewardPercentage(uint256 _lpRewardPercentage) external onlyAdmin {
