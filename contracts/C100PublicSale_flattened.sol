@@ -319,6 +319,88 @@ abstract contract Pausable is Context {
     }
 }
 
+// File: @openzeppelin/contracts/token/ERC20/IERC20.sol
+
+
+// OpenZeppelin Contracts (last updated v5.1.0) (token/ERC20/IERC20.sol)
+
+pragma solidity ^0.8.20;
+
+/**
+ * @dev Interface of the ERC-20 standard as defined in the ERC.
+ */
+interface IERC20 {
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+
+    /**
+     * @dev Returns the value of tokens in existence.
+     */
+    function totalSupply() external view returns (uint256);
+
+    /**
+     * @dev Returns the value of tokens owned by `account`.
+     */
+    function balanceOf(address account) external view returns (uint256);
+
+    /**
+     * @dev Moves a `value` amount of tokens from the caller's account to `to`.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transfer(address to, uint256 value) external returns (bool);
+
+    /**
+     * @dev Returns the remaining number of tokens that `spender` will be
+     * allowed to spend on behalf of `owner` through {transferFrom}. This is
+     * zero by default.
+     *
+     * This value changes when {approve} or {transferFrom} are called.
+     */
+    function allowance(address owner, address spender) external view returns (uint256);
+
+    /**
+     * @dev Sets a `value` amount of tokens as the allowance of `spender` over the
+     * caller's tokens.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * IMPORTANT: Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an {Approval} event.
+     */
+    function approve(address spender, uint256 value) external returns (bool);
+
+    /**
+     * @dev Moves a `value` amount of tokens from `from` to `to` using the
+     * allowance mechanism. `value` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+}
+
 // File: contracts/C100PublicSale.sol
 
 
@@ -327,60 +409,27 @@ pragma solidity ^0.8.28;
 
 
 
-interface IERC20 {
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-    function allowance(address owner, address spender) external view returns (uint256);
-    function decimals() external view returns (uint8);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-}
 
 /**
  * @title C100PublicSale
- * @notice This contract handles the public ICO for COIN100 (C100) tokens.
- *         It sells C100 tokens for POL and optionally other ERC20 tokens (like USDC).
- * 
- * Key Features:
- * - The owner deploys this after deploying C100 token contract.
- * - Owner transfers 97% of C100 supply to this contract for sale.
- * - Investors buy C100 with POL or approved ERC20 tokens at a fixed rate.
- * - ICO runs for a set duration (start and end time).
- * - At the end of ICO, admin calls finalize() to burn unsold tokens.
- * - Future governance: After setting govContract, both owner and govContract share admin rights.
- * - Admin functions allow updating sale parameters, accepted tokens, rates, and pausing the sale.
- *
- * Additional functionality:
- * - Admin can rescue any accidental ERC20 tokens sent here (except for C100 before finalize) by transferring them to the treasury.
- *
- * Assumptions:
- * - The C100 token contract does not have a direct burn function by sending to address(0). 
- *   We will send unsold tokens to a known burn address (e.g., 0x...dEaD) at finalize.
- * - Ensure that the C100 token contract is already deployed and approved for these operations.
- * - Rates are set in terms of "C100 per 1 unit of payment token".
+ * @notice A public sale contract for C100 tokens. The polRate is updated by the C100 contract periodically.
  */
 contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
-    // ---------------------------------------
-    // Core parameters
-    // ---------------------------------------
-    IERC20 public c100Token;               // The C100 token being sold
-    address public govContract;            // Governor contract, once set
-    address public treasury;               // Address where raised funds are held (e.g., the owner's address)
-    
-    uint256 public startTime;              // ICO start time (unix timestamp)
-    uint256 public endTime;                // ICO end time (unix timestamp)
-    bool public finalized;                 // Whether the ICO has been finalized
-    
-    // Rates and Accepted Tokens
-    uint256 public polRate;              // How many C100 per 1 POL
-    mapping(address => uint256) public erc20Rates; // token -> C100 per 1 token of that ERC20
+    IERC20 public c100Token;
+    address public govContract;
+    address public treasury;
 
-    // Constants
+    uint256 public startTime;
+    uint256 public endTime;
+    bool public finalized;
+
+    // Current polRate (C100 per POL) scaled by 1e18
+    uint256 public polRate;
+
+    mapping(address => uint256) public erc20Rates; 
+
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
-    // ---------------------------------------
-    // Events
-    // ---------------------------------------
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
     event TokenPurchased(address indexed buyer, address indexed paymentToken, uint256 paymentAmount, uint256 c100Amount);
     event RatesUpdated(uint256 newPolRate);
@@ -390,15 +439,8 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     event Finalized(uint256 unsoldTokensBurned);
     event TokensRescued(address indexed token, uint256 amount);
 
-    // ---------------------------------------
-    // Modifiers
-    // ---------------------------------------
     modifier onlyAdmin() {
-        require(
-            msg.sender == owner() || 
-            (govContract != address(0) && msg.sender == govContract),
-            "Not admin"
-        );
+        require(msg.sender == owner() || (govContract != address(0) && msg.sender == govContract), "Not admin");
         _;
     }
 
@@ -418,9 +460,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         _;
     }
 
-    // ---------------------------------------
-    // Constructor
-    // ---------------------------------------
     constructor(
         address c100TokenAddress,
         address initialTreasury,
@@ -432,160 +471,125 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         Pausable()
         ReentrancyGuard()
     {
-        require(c100TokenAddress != address(0), "C100 token zero");
+        require(c100TokenAddress != address(0), "C100 zero");
         require(initialTreasury != address(0), "Treasury zero");
         require(initialStartTime < initialEndTime, "Invalid time range");
-        require(initialPolRate > 0, "Rate must be > 0");
+        require(initialPolRate > 0, "polRate must be >0");
 
         c100Token = IERC20(c100TokenAddress);
         treasury = initialTreasury;
         startTime = initialStartTime;
         endTime = initialEndTime;
-        polRate = initialPolRate;
+        polRate = initialPolRate; // initial polRate
     }
 
-    // ---------------------------------------
-    // Purchasing Functions
-    // ---------------------------------------
-    /**
-     * @notice Buy C100 with POL.
-     */
+    receive() external payable {
+        // Allows receiving POL for buyWithPOL()
+    }
+
+    fallback() external payable {
+        revert("No ETH");
+    }
+
+    function polRateView() external view returns (uint256) {
+        return polRate;
+    }
+
     function buyWithPOL() external payable nonReentrant whenNotPaused icoActive {
         require(msg.value > 0, "No POL sent");
-        uint256 c100Amount = msg.value * polRate;
+        // polRate = C100 per POL * 1e18
+        // If msg.value is in POL (no scaling), C100 = (msg.value * polRate) / 1e18
+        uint256 c100Amount = (msg.value * polRate) / 1e18;
         _deliverTokens(msg.sender, c100Amount);
-        _forwardFunds(msg.value); // POL directly goes to treasury
+        _forwardFunds(msg.value);
         emit TokenPurchased(msg.sender, address(0), msg.value, c100Amount);
     }
 
-    /**
-     * @notice Buy C100 with an approved ERC20 token.
-     * @param token The ERC20 token address used to pay.
-     * @param tokenAmount The amount of that ERC20 sent.
-     */
     function buyWithToken(address token, uint256 tokenAmount) external nonReentrant whenNotPaused icoActive {
         require(token != address(0), "Token zero");
         uint256 rate = erc20Rates[token];
         require(rate > 0, "Token not accepted");
         require(tokenAmount > 0, "No tokens sent");
 
-        uint256 c100Amount = tokenAmount * rate;
+        // rate = C100 per token * 1e18
+        uint256 c100Amount = (tokenAmount * rate) / 1e18;
         require(IERC20(token).transferFrom(msg.sender, treasury, tokenAmount), "Transfer failed");
         _deliverTokens(msg.sender, c100Amount);
         emit TokenPurchased(msg.sender, token, tokenAmount, c100Amount);
     }
 
-    // ---------------------------------------
-    // Finalization
-    // ---------------------------------------
-    /**
-     * @notice Finalize the ICO after it ends. Burns unsold C100 tokens.
-     */
     function finalize() external onlyAdmin icoEnded nonReentrant {
         require(!finalized, "Already finalized");
         finalized = true;
 
         uint256 unsold = c100Token.balanceOf(address(this));
         if (unsold > 0) {
-            // Burn unsold tokens by sending to BURN_ADDRESS
-            c100Token.transfer(BURN_ADDRESS, unsold);
+            require(c100Token.transfer(BURN_ADDRESS, unsold), "Burn transfer failed");
         }
         emit Finalized(unsold);
     }
 
-    // ---------------------------------------
-    // Admin Functions
-    // ---------------------------------------
-    /**
-     * @notice Set the governor contract. Once set, both owner and govContract share admin rights.
-     * @param _govContract The governor contract address.
-     */
     function setGovernorContract(address _govContract) external onlyOwner {
         address oldGov = govContract;
         govContract = _govContract;
         emit GovernorContractSet(oldGov, _govContract);
     }
 
-    /**
-     * @notice Pause the contract in case of emergency.
-     */
     function pauseContract() external onlyAdmin {
         _pause();
     }
 
-    /**
-     * @notice Unpause the contract.
-     */
     function unpauseContract() external onlyAdmin {
         _unpause();
     }
 
-    /**
-     * @notice Update the POL rate.
-     * @param newRate The new C100 per POL rate.
-     */
-    function updatePOLRate(uint256 newRate) external onlyAdmin icoNotStarted {
-        require(newRate > 0, "Rate must be > 0");
+    // Update polRate by C100 contract at rebase
+    function updatePOLRate(uint256 newRate) external onlyAdmin {
+        require(newRate > 0, "Rate must be >0");
         polRate = newRate;
         emit RatesUpdated(newRate);
     }
 
-    /**
-     * @notice Update or add an ERC20 token rate.
-     * @param token The ERC20 token address.
-     * @param newRate The new C100 per token rate.
-     */
     function updateErc20Rate(address token, uint256 newRate) external onlyAdmin icoNotStarted {
         require(token != address(0), "Token zero");
-        require(newRate > 0, "Rate must be > 0");
+        require(newRate > 0, "Rate >0");
         erc20Rates[token] = newRate;
         emit Erc20RateUpdated(token, newRate);
     }
 
-    /**
-     * @notice Update ICO parameters (start and end time) before it starts.
-     * @param newStart The new start time.
-     * @param newEnd The new end time.
-     */
     function updateICOParameters(uint256 newStart, uint256 newEnd) external onlyAdmin icoNotStarted {
-        require(newStart < newEnd, "Invalid time range");
+        require(newStart < newEnd, "Invalid range");
         startTime = newStart;
         endTime = newEnd;
         emit ICOParametersUpdated(newStart, newEnd);
     }
 
-    /**
-     * @notice Update the treasury address.
-     * @param newTreasury The new treasury address.
-     */
     function updateTreasury(address newTreasury) external onlyAdmin {
-        require(newTreasury != address(0), "Treasury zero");
+        require(newTreasury != address(0), "Zero");
         address old = treasury;
         treasury = newTreasury;
         emit TreasuryUpdated(old, newTreasury);
     }
 
-    /**
-     * @notice Rescue any accidental ERC20 tokens sent to this contract (except C100 before finalize).
-     * @param token The ERC20 token address to rescue.
-     */
     function rescueTokens(address token) external onlyAdmin {
-        require(token != address(0), "Token zero");
-        // If token is C100 and ICO not finalized, do not allow rescue (can't withdraw sale tokens)
+        require(token != address(0), "Zero");
         if (token == address(c100Token) && !finalized) {
             revert("Cannot rescue C100 before finalize");
         }
-
         uint256 balance = IERC20(token).balanceOf(address(this));
         if (balance > 0) {
-            require(IERC20(token).transfer(treasury, balance), "Rescue transfer failed");
+            require(IERC20(token).transfer(treasury, balance), "Rescue fail");
             emit TokensRescued(token, balance);
         }
     }
 
-    // ---------------------------------------
-    // Internal Helpers
-    // ---------------------------------------
+    function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
+        require(c100Token.balanceOf(treasury) >= amount, "Not enough");
+        require(c100Token.transfer(BURN_ADDRESS, amount), "Burn failed");
+        // We do not emit Transfer here since not an ERC20 contract.
+        // If needed, create a custom event.
+    }
+
     function _deliverTokens(address recipient, uint256 amount) internal {
         require(c100Token.balanceOf(address(this)) >= amount, "Not enough C100");
         require(c100Token.transfer(recipient, amount), "C100 transfer failed");
@@ -594,14 +598,5 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     function _forwardFunds(uint256 amount) internal {
         (bool success, ) = treasury.call{value: amount}("");
         require(success, "Forwarding POL failed");
-    }
-
-    // ---------------------------------------
-    // Fallback Functions
-    // ---------------------------------------
-    receive() external payable {
-        // Allows receiving POL for buyWithPOL()
-        // Any direct sends not via buyWithPOL() are accepted but won't get tokens.
-        // It's recommended to always call buyWithPOL().
     }
 }
