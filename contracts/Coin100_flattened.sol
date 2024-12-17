@@ -327,10 +327,6 @@ pragma solidity ^0.8.28;
 
 
 
-/**
- * @title IC100PublicSale
- * @notice Interface to interact with the C100PublicSale contract.
- */
 interface IC100PublicSale {
     function polRate() external view returns (uint256);
     function updatePOLRate(uint256 newRate) external;
@@ -345,21 +341,11 @@ interface IUniswapV2Pair {
 /**
  * @title COIN100 (C100)
  * @notice A rebasing token representing the top 100 crypto market cap index.
- *         On each rebase, all balances scale proportionally to reflect changes
- *         in the top 100 market cap, ensuring each holder maintains their fraction.
  * 
- * New Features:
- * - Fee-Based Treasury Growth
- * - LP Rewards Allocation
- * - Governance Transition
- * - Dynamic polRate Update in Public Sale
- *
- * Daily/periodic manual rebases:
- * - Admin calls `rebase(newMarketCap)` to adjust supply based on top 100 market cap.
- *
- * Governance Transition:
- * - Initially, owner is admin.
- * - A govContract can be set, sharing admin rights.
+ * Changes in this version:
+ * - Treat the initialMarketCap and polRate inputs as human-readable integers and scale them by 1e18 internally.
+ * - When calling rebase(newMarketCap), you also provide a whole number that gets scaled by 1e18 internally.
+ * - Ensures totalSupply and other internal calculations align with 18-decimal ERC20 standards.
  */
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // ---------------------------------------
@@ -404,10 +390,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     address public c100USDCPool;  
     address public c100POLPool;   
 
-    // polInUSDCRate: USDC per POL (scaled by 1e18) for fallback calculations
+    // polInUSDCRate: USDC per POL (scaled by 1e18)
     uint256 public polInUSDCRate;
 
-    // Last calculated polRate from pools
+    // Last calculated polRate from pools (C100 per POL * 1e18)
     uint256 public lastCalculatedPolRate;
 
     // Rebase frequency placeholder
@@ -432,11 +418,12 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     constructor(uint256 initialMarketCap, uint256 initialPolRate) Ownable(msg.sender) Pausable() ReentrancyGuard() {
         require(initialMarketCap > 0, "Initial mcap must be > 0");
-        // initialPolRate passed as a simple integer (e.g., 600), we scale it by 1e18:
         require(initialPolRate > 0, "Initial polRate must be > 0");
 
-        _totalSupply = initialMarketCap;
-        lastMarketCap = initialMarketCap;
+        // Scale initialMarketCap by 1e18 to match ERC20 18 decimals standard
+        uint256 scaledMcap = initialMarketCap * 1e18;
+        _totalSupply = scaledMcap;
+        lastMarketCap = scaledMcap;
 
         ownerAllocation = (_totalSupply * 3) / 100;           
         remainingAllocation = _totalSupply - ownerAllocation; 
@@ -454,8 +441,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         transferFeeBasisPoints = 100;           
         treasury = owner();
         lpRewardPercentage = 5; 
-        // Scale polRate by 1e18
-        lastCalculatedPolRate = initialPolRate * 1e18; 
+
+        // Scale initialPolRate by 1e18
+        lastCalculatedPolRate = initialPolRate * 1e18;
     }
 
     modifier onlyAdmin() {
@@ -557,19 +545,18 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         }
         emit POLRateUpdated(oldPolRate, newPolRate);
 
-        // ratioScaled = (newMarketCap * 1e18) / oldMarketCap
-        // This treats newMarketCap as a plain integer and converts it to 18 decimals by multiplying by 1e18.
-        uint256 ratioScaled = 0;
+        // Scale newMarketCap by 1e18
+        uint256 scaledNewMarketCap = newMarketCap * 1e18;
+
+        uint256 ratioScaled = 1e18; // Default ratio is 1 if oldMarketCap = 0
         if (oldMarketCap > 0) {
-            ratioScaled = (newMarketCap * 1e18) / oldMarketCap;
-        } else {
-            // If oldMarketCap somehow is 0, fallback to no change.
-            ratioScaled = 1e18; 
+            // ratioScaled = (scaledNewMarketCap / oldMarketCap) * 1e18
+            ratioScaled = (scaledNewMarketCap * 1e18) / oldMarketCap;
         }
 
         uint256 newSupply = (oldSupply * ratioScaled) / 1e18;
         if (newSupply == 0) {
-            // If calculation leads to zero supply, fallback to oldSupply (no change)
+            // fallback to no change if calculation yields zero
             newSupply = oldSupply;
         }
 
@@ -585,9 +572,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         _gonsPerFragment = MAX_GONS / newSupply;
         _totalSupply = newSupply;
-        lastMarketCap = newMarketCap;
+        lastMarketCap = scaledNewMarketCap;
 
-        emit Rebase(oldMarketCap, newMarketCap, ratioScaled, block.timestamp);
+        emit Rebase(oldMarketCap, scaledNewMarketCap, ratioScaled, block.timestamp);
 
         if (isIncrease && lpRewardPercentage > 0 && liquidityPoolList.length > 0 && supplyDelta > 0) {
             _allocateRewardsToLPs(supplyDelta);
@@ -606,7 +593,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         }
 
         if (totalLpSupply == 0) {
-            // If no LP supply, just skip
+            // If no LP supply, skip
             return;
         }
 
@@ -649,7 +636,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Fallback: use C100/USDC pool and polInUSDCRate
         if (c100USDCPool == address(0) || polInUSDCRate == 0) {
-            // If no fallback available, return last rate
             return lastCalculatedPolRate;
         }
 
@@ -666,18 +652,14 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         }
 
         if (c100R == 0) {
-            // Avoid division by zero, fallback to last rate
             return lastCalculatedPolRate;
         }
 
         uint256 c100PriceInUSDC = (usdcR * 1e18) / c100R;
         if (c100PriceInUSDC == 0) {
-            // Avoid zero division
             return lastCalculatedPolRate;
         }
 
-        // polInUSDCRate (USDC per POL * 1e18)
-        // C100 per POL = (polInUSDCRate * 1e18) / c100PriceInUSDC
         uint256 fallbackRate = (polInUSDCRate * 1e18) / c100PriceInUSDC;
         if (fallbackRate == 0) {
             return lastCalculatedPolRate;
