@@ -547,8 +547,8 @@ For further inquiries, support, or to engage with the COIN100 team, please reach
 - **Discord:** [Join Our Discord](https://discord.com/channels/1312498183485784236/1312498184500674693)
 - **Reddit:** [r/Coin100](https://www.reddit.com/r/Coin100)
 - **X:** [@Coin100token](https://x.com/Coin100token)
-- **coin100:** `0x6402778921629ffbfeb3b683a4da099f74a2d4c5`
-- **publicSale:** `0xc79d86e03eda12720ba2f640d908ff9525227dd6`
+- **coin100:** `0x315caf51ae1e1fa93662f3f83e332dd0e1dab70e`
+- **publicSale:** `0x48922c62e7a9dd19b55572d676dbfe290fe6d74f`
 
 ---
 
