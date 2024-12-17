@@ -611,9 +611,10 @@ For further inquiries, support, or to engage with the COIN100 team, please reach
 
 - **Website:** [https://coin100.link](https://coin100.link)
 - **Email:** [mayor@coin100.link](mailto:mayor@coin100.link)
-- **Discord:** [Join Our Discord](https://discord.com/channels/1312498183485784236/1312498184500674693)
+- **Discord:** [Join Our Discord](https://discord.com/channels/1318664310490398770/1318664310490398773)
 - **Reddit:** [r/Coin100](https://www.reddit.com/r/Coin100)
 - **X:** [@Coin100token](https://x.com/Coin100token)
+- **Telegram:** [@Coin100token](https://t.me/coin100token)
 - **coin100:** `0x1459884924e7e973d1579ee4ebcaa4ef0b1c8f21`
 - **publicSale:** `0x2cdac1848b1c14d36e173e10315da97bb17b5489`
 
