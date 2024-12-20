@@ -86,25 +86,19 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @notice Constructor to initialize the contract.
      * @param initialMarketCap Initial market capitalization (human-readable, scaled by 1e18 internally).
      * @param _treasury Address of the treasury which will own the contract.
-     * @param _presaleEndTime UNIX timestamp marking the end of the presale period.
      */
     constructor(
         uint256 initialMarketCap, 
-        address _treasury,
-        uint256 _presaleEndTime
+        address _treasury
     ) Ownable(_treasury) Pausable() ReentrancyGuard() {
         require(_treasury != address(0), "Treasury address cannot be zero");
         require(initialMarketCap > 0, "Initial market cap must be > 0");
-        require(_presaleEndTime > block.timestamp, "Presale end time must be in the future");
 
         // Assign treasury
         treasury = _treasury;
 
         // Transfer ownership to treasury
         transferOwnership(treasury);
-
-        // Set presale end time
-        presaleEndTime = _presaleEndTime;
 
         // Scale initialMarketCap by 1e18 to match ERC20 18 decimals standard
         uint256 scaledMcap = initialMarketCap * 1e18;
@@ -227,19 +221,22 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Rebase logic
     /**
      * @notice Rebase the token supply based on the new market cap.
-     * @param newMarketCap The updated market capitalization in USDC (scaled by 1e18).
+     * @param newMarketCap The updated market capitalization in USDC (human-readable).
      */
     function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Market cap must be > 0");
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
+        // Scale newMarketCap by 1e18
+        uint256 scaledNewMarketCap = newMarketCap * 1e18;
+
         // Get current price
         uint256 currentPrice = _getCurrentPrice();
         require(currentPrice > 0, "Invalid price");
 
         // Calculate new supply based on newMarketCap and current price
-        uint256 newSupply = (newMarketCap * 1e18) / currentPrice;
+        uint256 newSupply = (scaledNewMarketCap * 1e18) / currentPrice;
         require(newSupply > 0, "New supply must be > 0");
 
         uint256 ratioScaled = (newSupply * 1e18) / oldSupply;
@@ -249,9 +246,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Update total supply and market cap
         _totalSupply = newSupply;
-        lastMarketCap = newMarketCap;
+        lastMarketCap = scaledNewMarketCap;
 
-        emit Rebase(oldMarketCap, newMarketCap, ratioScaled, block.timestamp);
+        emit Rebase(oldMarketCap, scaledNewMarketCap, ratioScaled, block.timestamp);
     }
 
     /**
@@ -301,14 +298,18 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Set the Public Sale contract address.
+     * @notice Set the Public Sale contract address and set presale end time based on public sale's end time.
      * @param _publicSaleContract Address of the new Public Sale contract.
+     * @param _presaleEndTime UNIX timestamp marking the end of the presale period.
      */
-    function setPublicSaleContract(address _publicSaleContract) external onlyOwner {
+    function setPublicSaleContract(address _publicSaleContract, uint256 _presaleEndTime) external onlyOwner {
         require(_publicSaleContract != address(0), "Public sale zero address");
+        require(_presaleEndTime > block.timestamp, "Presale end time must be in the future");
         address oldSale = publicSaleContract;
         publicSaleContract = _publicSaleContract;
+        presaleEndTime = _presaleEndTime;
         emit PublicSaleContractSet(oldSale, _publicSaleContract);
+        emit RebaseFrequencyUpdated(_presaleEndTime);
     }
 
     /**

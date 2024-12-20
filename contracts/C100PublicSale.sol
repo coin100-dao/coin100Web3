@@ -93,11 +93,15 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Allows users to purchase C100 tokens with USDC at a fixed rate.
-     * @param usdcAmount Amount of USDC to spend.
+     * @param usdcAmount Amount of USDC to spend (with 6 decimals).
      */
     function buyWithUSDC(uint256 usdcAmount) external nonReentrant whenNotPaused icoActive {
         require(usdcAmount > 0, "USDC amount must be > 0");
-        uint256 c100Amount = (usdcAmount * 1e18) / C100_PRICE_USDC; // 1 C100 = 0.001 USDC
+        
+        // USDC typically has 6 decimals. To align with C100's 18 decimals, scale USDC by 1e12
+        uint256 scaledUsdcAmount = usdcAmount * 1e12;
+
+        uint256 c100Amount = (scaledUsdcAmount * 1e18) / C100_PRICE_USDC; // 1 C100 = 0.001 USDC
 
         require(c100Token.balanceOf(address(this)) >= c100Amount, "Not enough C100 tokens");
 
@@ -180,7 +184,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(token != address(c100Token), "Cannot rescue C100 tokens");
         require(token != address(usdcToken), "Cannot rescue USDC during ICO");
         IERC20(token).transfer(treasury, amount);
-        emit TokensRescued(token, amount);
     }
 
     /**
