@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title C100PublicSale
@@ -19,6 +20,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * - Finalizes by burning unsold tokens.
  */
 contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
+
     IERC20 public c100Token;
     IERC20 public usdcToken;
     address public treasury;
@@ -111,10 +114,10 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(c100Token.balanceOf(address(this)) >= c100Amount, "Not enough C100 tokens");
 
         // Transfer USDC from buyer to treasury
-        require(usdcToken.transferFrom(msg.sender, treasury, usdcAmount), "USDC transfer failed");
+        usdcToken.safeTransferFrom(msg.sender, treasury, usdcAmount);
 
         // Transfer C100 tokens to buyer
-        require(c100Token.transfer(msg.sender, c100Amount), "C100 transfer failed");
+        c100Token.safeTransfer(msg.sender, c100Amount);
 
         emit TokenPurchased(msg.sender, usdcAmount, c100Amount);
     }
@@ -128,7 +131,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
         uint256 unsold = c100Token.balanceOf(address(this));
         if (unsold > 0) {
-            require(c100Token.transfer(BURN_ADDRESS, unsold), "Burn transfer failed");
+            c100Token.safeTransfer(BURN_ADDRESS, unsold);
         }
 
         emit Finalized(unsold);
@@ -188,7 +191,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(token != address(0), "Zero address");
         require(token != address(c100Token), "Cannot rescue C100 tokens");
         require(token != address(usdcToken), "Cannot rescue USDC during ICO");
-        IERC20(token).transfer(treasury, amount);
+        IERC20(token).safeTransfer(treasury, amount);
         emit TokensRescued(token, amount);
     }
 
@@ -198,8 +201,8 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
      */
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
         require(c100Token.balanceOf(treasury) >= amount, "Not enough tokens in treasury");
-        // To minimize precision loss, perform multiplication before any division implicitly via transferFrom
-        require(c100Token.transferFrom(treasury, BURN_ADDRESS, amount), "Burn failed");
+        // The treasury must approve this contract to spend the tokens
+        c100Token.safeTransferFrom(treasury, BURN_ADDRESS, amount);
     }
 
     /**

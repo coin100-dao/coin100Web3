@@ -5,10 +5,11 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // Import Uniswap V2 Pair Interface from official repository
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title COIN100 (C100)
@@ -22,6 +23,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * - Secure access control and pausable functionalities.
  */
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
+
     // ---------------------------------------
     // Token metadata
     // ---------------------------------------
@@ -58,8 +61,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Public Sale Contract
     address public publicSaleContract;
 
-    // Rebase frequency placeholder
+    // Rebase frequency
     uint256 public rebaseFrequency;           
+    uint256 public lastRebaseTimestamp;
 
     // Fixed price during presale
     uint256 public constant FIXED_PRICE_USDC = 1e15; // 0.001 USDC per C100 (scaled by 1e18)
@@ -69,8 +73,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     // Events
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
-    event Transfer(address indexed from, address indexed to, uint256 amount);
-    event Approval(address indexed owner, address indexed spender, uint256 amount);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
     event TreasuryAddressUpdated(address indexed oldTreasury, address indexed newTreasury);
     event FeeParametersUpdated(uint256 treasuryFeeBasisPoints, uint256 lpFeeBasisPoints);
@@ -78,6 +82,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event PublicSaleContractSet(address indexed oldSaleContract, address indexed newSaleContract);
     event RebaseFrequencyUpdated(uint256 newFrequency);
     event TokensBurned(uint256 amount);
+    event TokensRescued(address indexed token, uint256 amount);
     event ContractInitialized(uint256 initialMarketCap, address treasury);
 
     /**
@@ -113,6 +118,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Default parameters
         rebaseFrequency = 1 days;
+        lastRebaseTimestamp = block.timestamp;
         transfersWithFee = true;                
         transferFeeBasisPoints = 200; // Total fee: 2%
         treasuryFeeBasisPoints = 100;   // 1% to treasury
@@ -126,41 +132,87 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     // ERC20 standard functions
 
+    /**
+     * @notice Returns the total supply of the token.
+     * @return The total supply.
+     */
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
 
+    /**
+     * @notice Returns the token balance of a given account.
+     * @param account The address of the account.
+     * @return The balance of the account.
+     */
     function balanceOf(address account) public view returns (uint256) {
         return _gonsBalances[account] / _gonsPerFragment;
     }
 
-    function allowance(address owner_, address spender) public view returns (uint256) {
-        return _allowances[owner_][spender];
+    /**
+     * @notice Returns the remaining number of tokens that `spender` can spend on behalf of `owner`.
+     * @param owner The owner address.
+     * @param spender The spender address.
+     * @return The remaining allowance.
+     */
+    function allowance(address owner, address spender) public view returns (uint256) {
+        return _allowances[owner][spender];
     }
 
-    function transfer(address to, uint256 amount) public whenNotPaused returns (bool) {
-        _transfer(msg.sender, to, amount);
+    /**
+     * @notice Transfers `value` tokens to address `to`.
+     * @param to The recipient address.
+     * @param value The amount to transfer.
+     * @return Success status.
+     */
+    function transfer(address to, uint256 value) public whenNotPaused returns (bool) {
+        _transfer(msg.sender, to, value);
         return true;
     }
 
-    function approve(address spender, uint256 amount) public whenNotPaused returns (bool) {
-        _approve(msg.sender, spender, amount);
+    /**
+     * @notice Approves `spender` to spend `value` tokens on behalf of the caller.
+     * @param spender The spender address.
+     * @param value The amount to approve.
+     * @return Success status.
+     */
+    function approve(address spender, uint256 value) public whenNotPaused returns (bool) {
+        _approve(msg.sender, spender, value);
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) public whenNotPaused returns (bool) {
+    /**
+     * @notice Transfers `value` tokens from `from` to `to` using the allowance mechanism.
+     * @param from The sender address.
+     * @param to The recipient address.
+     * @param value The amount to transfer.
+     * @return Success status.
+     */
+    function transferFrom(address from, address to, uint256 value) public whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[from][msg.sender];
-        require(currentAllowance >= amount, "Exceeds allowance");
-        _transfer(from, to, amount);
-        _approve(from, msg.sender, currentAllowance - amount);
+        require(currentAllowance >= value, "Exceeds allowance");
+        _transfer(from, to, value);
+        _approve(from, msg.sender, currentAllowance - value);
         return true;
     }
 
+    /**
+     * @notice Increases the allowance granted to `spender` by the caller.
+     * @param spender The spender address.
+     * @param addedValue The amount to increase the allowance by.
+     * @return Success status.
+     */
     function increaseAllowance(address spender, uint256 addedValue) external whenNotPaused returns (bool) {
         _approve(msg.sender, spender, _allowances[msg.sender][spender] + addedValue);
         return true;
     }
 
+    /**
+     * @notice Decreases the allowance granted to `spender` by the caller.
+     * @param spender The spender address.
+     * @param subtractedValue The amount to decrease the allowance by.
+     * @return Success status.
+     */
     function decreaseAllowance(address spender, uint256 subtractedValue) external whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[msg.sender][spender];
         require(currentAllowance >= subtractedValue, "Below zero");
@@ -169,12 +221,12 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Internal transfer and approve
-    function _transfer(address from, address to, uint256 amount) internal {
+    function _transfer(address from, address to, uint256 value) internal {
         require(from != address(0), "From zero");
         require(to != address(0), "To zero");
-        require(balanceOf(from) >= amount, "Balance too low");
+        require(balanceOf(from) >= value, "Balance too low");
 
-        uint256 gonsAmount = amount * _gonsPerFragment;
+        uint256 gonsAmount = value * _gonsPerFragment;
 
         _gonsBalances[from] -= gonsAmount;
 
@@ -207,15 +259,15 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             emit Transfer(from, to, recipientAmount);
         } else {
             _gonsBalances[to] += gonsAmount;
-            emit Transfer(from, to, amount);
+            emit Transfer(from, to, value);
         }
     }
 
-    function _approve(address owner_, address spender, uint256 amount) internal {
+    function _approve(address owner_, address spender, uint256 value) internal {
         require(owner_ != address(0), "Owner zero");
         require(spender != address(0), "Spender zero");
-        _allowances[owner_][spender] = amount;
-        emit Approval(owner_, spender, amount);
+        _allowances[owner_][spender] = value;
+        emit Approval(owner_, spender, value);
     }
 
     // Rebase logic
@@ -225,6 +277,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      */
     function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Market cap must be > 0");
+        require(block.timestamp >= lastRebaseTimestamp + rebaseFrequency, "Rebase frequency not met");
+
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
@@ -248,6 +302,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         // Update total supply and market cap
         _totalSupply = newSupply;
         lastMarketCap = scaledNewMarketCap;
+        lastRebaseTimestamp = block.timestamp;
 
         emit Rebase(oldMarketCap, scaledNewMarketCap, ratioScaled, block.timestamp);
     }
@@ -329,6 +384,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param newFrequency New rebase frequency in seconds.
      */
     function setRebaseFrequency(uint256 newFrequency) external onlyAdmin {
+        require(newFrequency > 0, "Frequency must be > 0");
         rebaseFrequency = newFrequency;
         emit RebaseFrequencyUpdated(newFrequency);
     }
@@ -396,7 +452,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         require(token != treasury, "Cannot rescue treasury tokens");
         require(token != liquidityPool, "Cannot rescue liquidity pool tokens");
         require(token != address(0), "Zero address");
-        IERC20(token).transfer(treasury, amount);
-        emit TokensBurned(amount); // Reusing event for simplicity
+
+        IERC20(token).safeTransfer(treasury, amount);
+        emit TokensRescued(token, amount);
     }
 }
