@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 // Import Uniswap V2 Pair Interface from official repository
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
@@ -17,13 +18,14 @@ import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
  * 
  * Features:
  * - 100% initial supply allocated to treasury.
- * - Transaction fees split between treasury and liquidity pool.
- * - Single liquidity pool support (C100/USDC).
+ * - Transaction fees split between treasury and approved liquidity pools.
+ * - Supports multiple liquidity pools (C100/USDC) managed by admin.
  * - Robust rebasing mechanism aligned with market capitalization.
  * - Secure access control and pausable functionalities.
  */
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
+    using EnumerableSet for EnumerableSet.AddressSet; // Using EnumerableSet for managing pools
 
     // ---------------------------------------
     // Token metadata
@@ -56,7 +58,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 public lpFeeBasisPoints;       // Portion of fee to LPs
 
     // LP Rewards
-    address public liquidityPool; // Only one LP supported (C100/USDC)
+    // Removed single liquidityPool variable
+    EnumerableSet.AddressSet private liquidityPools; // Set of approved liquidity pools
 
     // Public Sale Contract
     address public publicSaleContract;
@@ -78,7 +81,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
     event TreasuryAddressUpdated(address indexed oldTreasury, address indexed newTreasury);
     event FeeParametersUpdated(uint256 treasuryFeeBasisPoints, uint256 lpFeeBasisPoints);
-    event LiquidityPoolSet(address indexed oldPool, address indexed newPool);
+    event LiquidityPoolAdded(address indexed pool);
+    event LiquidityPoolRemoved(address indexed pool);
     event PublicSaleContractSet(address indexed oldSaleContract, address indexed newSaleContract);
     event RebaseFrequencyUpdated(uint256 newFrequency);
     event TokensBurned(uint256 amount);
@@ -242,12 +246,22 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             _gonsBalances[treasury] += treasuryFeeGons;
             emit Transfer(from, treasury, treasuryFeeGons / _gonsPerFragment);
 
-            // Allocate LP fee
-            if (lpFeeGons > 0 && liquidityPool != address(0)) {
-                _gonsBalances[liquidityPool] += lpFeeGons;
-                emit Transfer(from, liquidityPool, lpFeeGons / _gonsPerFragment);
+            // Allocate LP fee to all approved liquidity pools
+            uint256 numberOfPools = liquidityPools.length();
+            if (lpFeeGons > 0 && numberOfPools > 0) {
+                uint256 feePerPool = lpFeeGons / numberOfPools;
+                for (uint256 i = 0; i < numberOfPools; i++) {
+                    address pool = liquidityPools.at(i);
+                    _gonsBalances[pool] += feePerPool;
+                    emit Transfer(from, pool, feePerPool / _gonsPerFragment);
+                }
+                uint256 remainingFee = lpFeeGons - (feePerPool * numberOfPools);
+                if (remainingFee > 0 && treasury != address(0)) {
+                    _gonsBalances[treasury] += remainingFee;
+                    emit Transfer(from, treasury, remainingFee / _gonsPerFragment);
+                }
             } else {
-                // If no LP, send all to treasury
+                // If no pools are set, send all LP fees to treasury
                 _gonsBalances[treasury] += lpFeeGons;
                 emit Transfer(from, treasury, lpFeeGons / _gonsPerFragment);
             }
@@ -308,35 +322,50 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Retrieves the current price of C100 from the liquidity pool or uses fixed price during presale.
+     * @notice Retrieves the current price of C100 from the liquidity pools or uses fixed price during presale.
      * @return price The price of 1 C100 in USDC, scaled by 1e18.
      */
     function _getCurrentPrice() internal view returns (uint256 price) {
         if (block.timestamp <= presaleEndTime) {
             // Presale period: use fixed price
             price = FIXED_PRICE_USDC;
-        } else if (liquidityPool != address(0)) {
-            // Post-presale: use liquidity pool price
-            IUniswapV2Pair pair = IUniswapV2Pair(liquidityPool);
-            (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-            address token0 = pair.token0();
-            uint256 c100Reserve;
-            uint256 usdcReserve;
-            if (token0 == address(this)) {
-                c100Reserve = uint256(reserve0);
-                usdcReserve = uint256(reserve1);
-            } else {
-                c100Reserve = uint256(reserve1);
-                usdcReserve = uint256(reserve0);
-            }
-            if (c100Reserve == 0) {
-                return 0;
-            }
-            // Price = USDC / C100
-            price = (usdcReserve * 1e18) / c100Reserve;
         } else {
-            // No LP and post-presale: price undefined
-            price = 0;
+            // Post-presale: average price from all approved liquidity pools
+            uint256 numberOfPools = liquidityPools.length();
+            if (numberOfPools == 0) {
+                // No pools set, price undefined
+                price = 0;
+            } else {
+                uint256 totalPrice = 0;
+                uint256 validPools = 0;
+                for (uint256 i = 0; i < numberOfPools; i++) {
+                    address pool = liquidityPools.at(i);
+                    IUniswapV2Pair pair = IUniswapV2Pair(pool);
+                    (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+                    address token0 = pair.token0();
+                    uint256 c100Reserve;
+                    uint256 usdcReserve;
+                    if (token0 == address(this)) {
+                        c100Reserve = uint256(reserve0);
+                        usdcReserve = uint256(reserve1);
+                    } else {
+                        c100Reserve = uint256(reserve1);
+                        usdcReserve = uint256(reserve0);
+                    }
+                    if (c100Reserve == 0) {
+                        continue; // Skip pools with zero C100 reserve
+                    }
+                    // Price = USDC / C100
+                    uint256 poolPrice = (usdcReserve * 1e18) / c100Reserve;
+                    totalPrice += poolPrice;
+                    validPools += 1;
+                }
+                if (validPools > 0) {
+                    price = totalPrice / validPools;
+                } else {
+                    price = 0;
+                }
+            }
         }
     }
 
@@ -369,14 +398,42 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Set the liquidity pool address (C100/USDC).
-     * @param _liquidityPool Address of the liquidity pool.
+     * @notice Add a liquidity pool address to the approved list.
+     * @param _pool Address of the liquidity pool (C100/USDC pair).
      */
-    function setLiquidityPool(address _liquidityPool) external onlyAdmin {
-        require(_liquidityPool != address(0), "Liquidity pool zero address");
-        address oldPool = liquidityPool;
-        liquidityPool = _liquidityPool;
-        emit LiquidityPoolSet(oldPool, _liquidityPool);
+    function addLiquidityPool(address _pool) external onlyAdmin {
+        require(_pool != address(0), "Pool zero address");
+        require(!liquidityPools.contains(_pool), "Pool already added");
+        liquidityPools.add(_pool);
+        emit LiquidityPoolAdded(_pool);
+    }
+
+    /**
+     * @notice Remove a liquidity pool address from the approved list.
+     * @param _pool Address of the liquidity pool to remove.
+     */
+    function removeLiquidityPool(address _pool) external onlyAdmin {
+        require(liquidityPools.contains(_pool), "Pool not found");
+        liquidityPools.remove(_pool);
+        emit LiquidityPoolRemoved(_pool);
+    }
+
+    /**
+     * @notice Get the number of approved liquidity pools.
+     * @return The count of liquidity pools.
+     */
+    function getLiquidityPoolsCount() external view returns (uint256) {
+        return liquidityPools.length();
+    }
+
+    /**
+     * @notice Get the liquidity pool address at a specific index.
+     * @param index The index in the liquidity pools array.
+     * @return The liquidity pool address.
+     */
+    function getLiquidityPoolAt(uint256 index) external view returns (address) {
+        require(index < liquidityPools.length(), "Index out of bounds");
+        return liquidityPools.at(index);
     }
 
     /**
@@ -450,7 +507,12 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
         require(token != address(this), "Cannot rescue C100 tokens");
         require(token != treasury, "Cannot rescue treasury tokens");
-        require(token != liquidityPool, "Cannot rescue liquidity pool tokens");
+        // Removed check for liquidityPool since multiple pools exist
+        // Optionally, you can iterate and exclude all approved pools
+        uint256 poolsCount = liquidityPools.length();
+        for (uint256 i = 0; i < poolsCount; i++) {
+            require(token != liquidityPools.at(i), "Cannot rescue approved pool tokens");
+        }
         require(token != address(0), "Zero address");
 
         IERC20(token).safeTransfer(treasury, amount);
