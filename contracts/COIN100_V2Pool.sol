@@ -47,7 +47,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     address public treasury;
     bool public transfersWithFee;             
     uint256 public transferFeeBasisPoints;    
-        
+
     // Fee splitting
     uint256 public treasuryFeeBasisPoints; // Portion of fee to treasury
     uint256 public lpFeeBasisPoints;       // Portion of fee to LPs
@@ -179,6 +179,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _gonsBalances[from] -= gonsAmount;
 
         if (transfersWithFee && transferFeeBasisPoints > 0) {
+            // Calculate fees with multiplication before division to preserve precision
             uint256 feeGons = (gonsAmount * transferFeeBasisPoints) / 10000;
             uint256 treasuryFeeGons = (feeGons * treasuryFeeBasisPoints) / transferFeeBasisPoints;
             uint256 lpFeeGons = feeGons - treasuryFeeGons;
@@ -235,6 +236,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         require(currentPrice > 0, "Invalid price");
 
         // Calculate new supply based on newMarketCap and current price
+        // To minimize precision loss, multiply first
         uint256 newSupply = (scaledNewMarketCap * 1e18) / currentPrice;
         require(newSupply > 0, "New supply must be > 0");
 

@@ -105,6 +105,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         // USDC typically has 6 decimals. To align with C100's 18 decimals, scale USDC by 1e12
         uint256 scaledUsdcAmount = usdcAmount * 1e12;
 
+        // To minimize precision loss, perform multiplication before division
         uint256 c100Amount = (scaledUsdcAmount * 1e18) / C100_PRICE_USDC; // 1 C100 = 0.001 USDC
 
         require(c100Token.balanceOf(address(this)) >= c100Amount, "Not enough C100 tokens");
@@ -197,6 +198,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
      */
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
         require(c100Token.balanceOf(treasury) >= amount, "Not enough tokens in treasury");
+        // To minimize precision loss, perform multiplication before any division implicitly via transferFrom
         require(c100Token.transferFrom(treasury, BURN_ADDRESS, amount), "Burn failed");
     }
 
