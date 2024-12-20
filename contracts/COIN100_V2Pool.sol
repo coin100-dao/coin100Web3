@@ -47,7 +47,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     address public treasury;
     bool public transfersWithFee;             
     uint256 public transferFeeBasisPoints;    
-    
+        
     // Fee splitting
     uint256 public treasuryFeeBasisPoints; // Portion of fee to treasury
     uint256 public lpFeeBasisPoints;       // Portion of fee to LPs
@@ -78,6 +78,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     event PublicSaleContractSet(address indexed oldSaleContract, address indexed newSaleContract);
     event RebaseFrequencyUpdated(uint256 newFrequency);
     event TokensBurned(uint256 amount);
+    event ContractInitialized(uint256 initialMarketCap, address treasury);
 
     /**
      * @notice Constructor to initialize the contract.
@@ -108,6 +109,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _gonsBalances[treasury] = totalGons;
 
         emit Transfer(address(0), treasury, _totalSupply);
+        emit ContractInitialized(initialMarketCap, treasury);
 
         // Default parameters
         rebaseFrequency = 1 days;

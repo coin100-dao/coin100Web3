@@ -31,6 +31,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
+    // Events
     event TokenPurchased(address indexed buyer, uint256 usdcAmount, uint256 c100Amount);
     event ICOParametersUpdated(uint256 newStart, uint256 newEnd);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
@@ -38,6 +39,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     event TokensRescued(address indexed token, uint256 amount);
     event C100TokenUpdated(address oldC100, address newC100);
     event USDCUpdated(address oldUSDC, address newUSDC);
+    event SaleInitialized(address c100Token, address usdcToken, address treasury, uint256 startTime, uint256 endTime);
 
     modifier onlyAdmin() {
         require(msg.sender == owner() || msg.sender == treasury, "Not admin");
@@ -89,6 +91,8 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         treasury = _treasury;
         startTime = _startTime;
         endTime = _endTime;
+
+        emit SaleInitialized(_c100Token, _usdcToken, _treasury, _startTime, _endTime);
     }
 
     /**
@@ -184,6 +188,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         require(token != address(c100Token), "Cannot rescue C100 tokens");
         require(token != address(usdcToken), "Cannot rescue USDC during ICO");
         IERC20(token).transfer(treasury, amount);
+        emit TokensRescued(token, amount);
     }
 
     /**
