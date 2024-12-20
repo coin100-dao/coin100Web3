@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+// OpenZeppelin Contracts
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -78,9 +79,9 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         ReentrancyGuard()
         Pausable()
     {
-        require(_c100Token != address(0), "C100 token zero");
-        require(_usdcToken != address(0), "USDC token zero");
-        require(_treasury != address(0), "Treasury zero");
+        require(_c100Token != address(0), "C100 token zero address");
+        require(_usdcToken != address(0), "USDC token zero address");
+        require(_treasury != address(0), "Treasury zero address");
         require(_startTime < _endTime, "Invalid time range");
 
         c100Token = IERC20(_c100Token);
@@ -176,7 +177,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
      */
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
         require(token != address(0), "Zero address");
-        require(token != address(c100Token), "Cannot rescue C100");
+        require(token != address(c100Token), "Cannot rescue C100 tokens");
         require(token != address(usdcToken), "Cannot rescue USDC during ICO");
         IERC20(token).transfer(treasury, amount);
         emit TokensRescued(token, amount);

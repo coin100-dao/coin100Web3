@@ -65,7 +65,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 public rebaseFrequency;           
 
     // Fixed price during presale
-    uint256 public constant FIXED_PRICE_USDC = 1e15; // 0.001 USDC per C100
+    uint256 public constant FIXED_PRICE_USDC = 1e15; // 0.001 USDC per C100 (scaled by 1e18)
+
+    // Presale end time
+    uint256 public presaleEndTime;
 
     // Events
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
@@ -83,19 +86,25 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @notice Constructor to initialize the contract.
      * @param initialMarketCap Initial market capitalization (human-readable, scaled by 1e18 internally).
      * @param _treasury Address of the treasury which will own the contract.
+     * @param _presaleEndTime UNIX timestamp marking the end of the presale period.
      */
     constructor(
         uint256 initialMarketCap, 
-        address _treasury
+        address _treasury,
+        uint256 _presaleEndTime
     ) Ownable(_treasury) Pausable() ReentrancyGuard() {
         require(_treasury != address(0), "Treasury address cannot be zero");
         require(initialMarketCap > 0, "Initial market cap must be > 0");
+        require(_presaleEndTime > block.timestamp, "Presale end time must be in the future");
 
         // Assign treasury
         treasury = _treasury;
 
         // Transfer ownership to treasury
         transferOwnership(treasury);
+
+        // Set presale end time
+        presaleEndTime = _presaleEndTime;
 
         // Scale initialMarketCap by 1e18 to match ERC20 18 decimals standard
         uint256 scaledMcap = initialMarketCap * 1e18;
@@ -122,7 +131,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _;
     }
 
-    // ERC20 standard
+    // ERC20 standard functions
+
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
@@ -184,6 +194,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
             // Allocate treasury fee
             _gonsBalances[treasury] += treasuryFeeGons;
+            emit Transfer(from, treasury, treasuryFeeGons / _gonsPerFragment);
 
             // Allocate LP fee
             if (lpFeeGons > 0 && liquidityPool != address(0)) {
@@ -198,10 +209,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             // Transfer remaining tokens to recipient
             _gonsBalances[to] += gonsAfterFee;
 
-            uint256 feeAmount = feeGons / _gonsPerFragment;
             uint256 recipientAmount = gonsAfterFee / _gonsPerFragment;
-
-            emit Transfer(from, treasury, treasuryFeeBasisPoints > 0 ? treasuryFeeGons / _gonsPerFragment : 0);
             emit Transfer(from, to, recipientAmount);
         } else {
             _gonsBalances[to] += gonsAmount;
@@ -217,12 +225,16 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     // Rebase logic
+    /**
+     * @notice Rebase the token supply based on the new market cap.
+     * @param newMarketCap The updated market capitalization in USDC (scaled by 1e18).
+     */
     function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Market cap must be > 0");
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
-        // Calculate current price
+        // Get current price
         uint256 currentPrice = _getCurrentPrice();
         require(currentPrice > 0, "Invalid price");
 
@@ -247,8 +259,11 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @return price The price of 1 C100 in USDC, scaled by 1e18.
      */
     function _getCurrentPrice() internal view returns (uint256 price) {
-        if (liquidityPool != address(0)) {
-            // Use liquidity pool price
+        if (block.timestamp <= presaleEndTime) {
+            // Presale period: use fixed price
+            price = FIXED_PRICE_USDC;
+        } else if (liquidityPool != address(0)) {
+            // Post-presale: use liquidity pool price
             IUniswapV2Pair pair = IUniswapV2Pair(liquidityPool);
             (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
             address token0 = pair.token0();
@@ -267,8 +282,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             // Price = USDC / C100
             price = (usdcReserve * 1e18) / c100Reserve;
         } else {
-            // Use fixed price during presale
-            price = FIXED_PRICE_USDC;
+            // No LP and post-presale: price undefined
+            price = 0;
         }
     }
 
@@ -279,6 +294,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param _govContract Address of the new Governor contract.
      */
     function setGovernorContract(address _govContract) external onlyOwner {
+        require(_govContract != address(0), "Governor zero address");
         address oldGov = govContract;
         govContract = _govContract;
         emit GovernorContractSet(oldGov, _govContract);
@@ -289,7 +305,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param _publicSaleContract Address of the new Public Sale contract.
      */
     function setPublicSaleContract(address _publicSaleContract) external onlyOwner {
-        require(_publicSaleContract != address(0), "Public sale zero");
+        require(_publicSaleContract != address(0), "Public sale zero address");
         address oldSale = publicSaleContract;
         publicSaleContract = _publicSaleContract;
         emit PublicSaleContractSet(oldSale, _publicSaleContract);
@@ -300,7 +316,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param _liquidityPool Address of the liquidity pool.
      */
     function setLiquidityPool(address _liquidityPool) external onlyAdmin {
-        require(_liquidityPool != address(0), "Liquidity pool zero");
+        require(_liquidityPool != address(0), "Liquidity pool zero address");
         address oldPool = liquidityPool;
         liquidityPool = _liquidityPool;
         emit LiquidityPoolSet(oldPool, _liquidityPool);
@@ -343,7 +359,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param amount Amount of tokens to burn.
      */
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
-        require(balanceOf(treasury) >= amount, "Not enough tokens");
+        require(balanceOf(treasury) >= amount, "Not enough tokens in treasury");
         uint256 gonsAmount = amount * _gonsPerFragment;
         _gonsBalances[treasury] -= gonsAmount;
         _totalSupply -= amount;
@@ -374,8 +390,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      * @param amount Amount of tokens to rescue.
      */
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
-        require(token != address(this), "Cannot rescue C100");
-        require(token != treasury, "Cannot rescue treasury");
+        require(token != address(this), "Cannot rescue C100 tokens");
+        require(token != treasury, "Cannot rescue treasury tokens");
+        require(token != liquidityPool, "Cannot rescue liquidity pool tokens");
         require(token != address(0), "Zero address");
         IERC20(token).transfer(treasury, amount);
         emit TokensBurned(amount); // Reusing event for simplicity
