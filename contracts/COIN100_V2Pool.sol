@@ -58,9 +58,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Public Sale Contract
     address public publicSaleContract;
 
-    // Liquidity Pools for pricing
-    address public c100USDCPool;  
-
     // Rebase frequency placeholder
     uint256 public rebaseFrequency;           
 
