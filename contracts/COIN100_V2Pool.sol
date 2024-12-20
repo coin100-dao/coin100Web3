@@ -47,7 +47,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     address public treasury;
     bool public transfersWithFee;             
     uint256 public transferFeeBasisPoints;    
-
+    
     // Fee splitting
     uint256 public treasuryFeeBasisPoints; // Portion of fee to treasury
     uint256 public lpFeeBasisPoints;       // Portion of fee to LPs
@@ -63,6 +63,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     // Rebase frequency placeholder
     uint256 public rebaseFrequency;           
+
+    // Fixed price during presale
+    uint256 public constant FIXED_PRICE_USDC = 1e15; // 0.001 USDC per C100
 
     // Events
     event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
@@ -219,9 +222,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 oldMarketCap = lastMarketCap;
         uint256 oldSupply = _totalSupply;
 
-        // Calculate current price from liquidity pool
-        uint256 currentPrice = _getPriceFromLP();
-        require(currentPrice > 0, "Invalid price from LP");
+        // Calculate current price
+        uint256 currentPrice = _getCurrentPrice();
+        require(currentPrice > 0, "Invalid price");
 
         // Calculate new supply based on newMarketCap and current price
         uint256 newSupply = (newMarketCap * 1e18) / currentPrice;
@@ -240,46 +243,33 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Allocates fees to the liquidity pool.
-     * @param lpFeeGons The amount of gons allocated to the LP.
-     */
-    function _allocateLPFees(uint256 lpFeeGons) internal {
-        // Currently, only one LP is supported
-        if (liquidityPool != address(0)) {
-            _gonsBalances[liquidityPool] += lpFeeGons;
-            emit Transfer(address(this), liquidityPool, lpFeeGons / _gonsPerFragment);
-        } else {
-            // If no LP, send all to treasury
-            _gonsBalances[treasury] += lpFeeGons;
-            emit Transfer(address(this), treasury, lpFeeGons / _gonsPerFragment);
-        }
-    }
-
-    /**
-     * @notice Retrieves the current price of C100 from the liquidity pool.
+     * @notice Retrieves the current price of C100 from the liquidity pool or uses fixed price during presale.
      * @return price The price of 1 C100 in USDC, scaled by 1e18.
      */
-    function _getPriceFromLP() internal view returns (uint256 price) {
-        if (liquidityPool == address(0)) {
-            return 0;
-        }
-        IUniswapV2Pair pair = IUniswapV2Pair(liquidityPool);
-        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-        address token0 = pair.token0();
-        uint256 c100Reserve;
-        uint256 usdcReserve;
-        if (token0 == address(this)) {
-            c100Reserve = uint256(reserve0);
-            usdcReserve = uint256(reserve1);
+    function _getCurrentPrice() internal view returns (uint256 price) {
+        if (liquidityPool != address(0)) {
+            // Use liquidity pool price
+            IUniswapV2Pair pair = IUniswapV2Pair(liquidityPool);
+            (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
+            address token0 = pair.token0();
+            uint256 c100Reserve;
+            uint256 usdcReserve;
+            if (token0 == address(this)) {
+                c100Reserve = uint256(reserve0);
+                usdcReserve = uint256(reserve1);
+            } else {
+                c100Reserve = uint256(reserve1);
+                usdcReserve = uint256(reserve0);
+            }
+            if (c100Reserve == 0) {
+                return 0;
+            }
+            // Price = USDC / C100
+            price = (usdcReserve * 1e18) / c100Reserve;
         } else {
-            c100Reserve = uint256(reserve1);
-            usdcReserve = uint256(reserve0);
+            // Use fixed price during presale
+            price = FIXED_PRICE_USDC;
         }
-        if (c100Reserve == 0) {
-            return 0;
-        }
-        // Price = USDC / C100
-        price = (usdcReserve * 1e18) / c100Reserve;
     }
 
     // Admin functions
@@ -385,6 +375,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
      */
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
         require(token != address(this), "Cannot rescue C100");
+        require(token != treasury, "Cannot rescue treasury");
         require(token != address(0), "Zero address");
         IERC20(token).transfer(treasury, amount);
         emit TokensBurned(amount); // Reusing event for simplicity

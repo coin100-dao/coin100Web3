@@ -65,7 +65,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
      * @param _usdcToken Address of the USDC token contract.
      * @param _treasury Address of the treasury.
      * @param _startTime UNIX timestamp for ICO start.
-     * @param _endTime UNIX timestamp for ICO end.
+     * @param _endTime UNIX timestamp for ICO end (12 months later).
      */
     constructor(
         address _c100Token,
@@ -91,7 +91,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Buys C100 tokens with USDC at a fixed rate.
+     * @notice Allows users to purchase C100 tokens with USDC at a fixed rate.
      * @param usdcAmount Amount of USDC to spend.
      */
     function buyWithUSDC(uint256 usdcAmount) external nonReentrant whenNotPaused icoActive {
