@@ -507,8 +507,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
         require(token != address(this), "Cannot rescue C100 tokens");
         require(token != treasury, "Cannot rescue treasury tokens");
-        // Removed check for liquidityPool since multiple pools exist
-        // Optionally, you can iterate and exclude all approved pools
+
         uint256 poolsCount = liquidityPools.length();
         for (uint256 i = 0; i < poolsCount; i++) {
             require(token != liquidityPools.at(i), "Cannot rescue approved pool tokens");
