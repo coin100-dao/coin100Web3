@@ -11,11 +11,11 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 /**
  * @title C100PublicSale
  * @notice A public sale contract for C100 tokens with a fixed rate.
- * 
+ *
  * Features:
  * - Owned by the treasury.
  * - Presale duration of 12 months.
- * - Fixed rate: 1 C100 = 0.001 USDC.
+ * - Fixed rate: 1 C100 = 0.001 USDC (scaled by 1e18).
  * - Allows buying C100 with USDC only.
  * - Finalizes by burning unsold tokens.
  */
@@ -30,7 +30,8 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     uint256 public endTime;
     bool public finalized;
 
-    uint256 public constant C100_PRICE_USDC = 1e15; // 0.001 USDC per C100 (scaled by 1e18)
+    // 0.001 USDC per C100 (scaled by 1e18).
+    uint256 public constant C100_PRICE_USDC = 1e15;
 
     address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
@@ -105,25 +106,25 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     function buyWithUSDC(uint256 usdcAmount) external nonReentrant whenNotPaused icoActive {
         require(usdcAmount > 0, "USDC amount must be > 0");
         
-        // USDC typically has 6 decimals. To align with C100's 18 decimals, scale USDC by 1e12
+        // USDC typically has 6 decimals. Scale it by 1e12 to align with C100's 18 decimals.
         uint256 scaledUsdcAmount = usdcAmount * 1e12;
 
-        // To minimize precision loss, perform multiplication before division
-        uint256 c100Amount = (scaledUsdcAmount * 1e18) / C100_PRICE_USDC; // 1 C100 = 0.001 USDC
-
+        // c100Amount = (usdcSpent * 1e18) / price
+        // price = 1e15 (which is 0.001 USDC in 1e18 scale)
+        uint256 c100Amount = (scaledUsdcAmount * 1e18) / C100_PRICE_USDC;
         require(c100Token.balanceOf(address(this)) >= c100Amount, "Not enough C100 tokens");
 
         // Transfer USDC from buyer to treasury
         usdcToken.safeTransferFrom(msg.sender, treasury, usdcAmount);
 
-        // Transfer C100 tokens to buyer
+        // Transfer C100 from this contract to buyer
         c100Token.safeTransfer(msg.sender, c100Amount);
 
         emit TokenPurchased(msg.sender, usdcAmount, c100Amount);
     }
 
     /**
-     * @notice Finalizes the ICO by burning unsold C100 tokens.
+     * @notice Finalizes the ICO by burning any unsold tokens.
      */
     function finalize() external onlyAdmin icoEnded nonReentrant {
         require(!finalized, "Already finalized");
@@ -151,7 +152,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Update the treasury address.
-     * @param newTreasury Address of the new treasury.
      */
     function updateTreasury(address newTreasury) external onlyAdmin {
         require(newTreasury != address(0), "Zero address");
@@ -162,7 +162,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Update the C100 token address.
-     * @param newC100 Address of the new C100 token contract.
      */
     function updateC100Token(address newC100) external onlyAdmin {
         require(newC100 != address(0), "Zero address");
@@ -173,7 +172,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Update the USDC token address.
-     * @param newUSDC Address of the new USDC token contract.
      */
     function updateUSDC(address newUSDC) external onlyAdmin {
         require(newUSDC != address(0), "Zero address");
@@ -184,8 +182,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Rescue tokens accidentally sent to the contract.
-     * @param token Address of the token to rescue.
-     * @param amount Amount of tokens to rescue.
      */
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
         require(token != address(0), "Zero address");
@@ -201,7 +197,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
      */
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
         require(c100Token.balanceOf(treasury) >= amount, "Not enough tokens in treasury");
-        // The treasury must approve this contract to spend the tokens
+        // The treasury must approve this contract to spend the tokens.
         c100Token.safeTransferFrom(treasury, BURN_ADDRESS, amount);
     }
 
