@@ -12,6 +12,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 /**
  * @title COIN100 (C100)
  * @notice A rebasing token representing the top 100 crypto market cap index.
+ *         The token adjusts its supply based on the market capitalization to maintain its peg.
  */
 contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
@@ -28,35 +29,47 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     // Rebase state variables
     // ---------------------------------------
     uint256 private _totalSupply;
-    uint256 public lastMarketCap;         
-    uint256 public constant MAX_GONS = type(uint256).max / 1e18;
-    uint256 private _gonsPerFragment;     
+    uint256 public lastMarketCap; // Stored as scaled by 1e18 for precision
 
-    mapping(address => uint256) private _gonsBalances;
-    mapping(address => mapping(address => uint256)) private _allowances;
+    uint256 public constant MAX_GONS = type(uint256).max / 1e18; // Maximum gons to prevent overflow
+    uint256 private _gonsPerFragment; // Determines the relationship between gons and tokens
+
+    mapping(address => uint256) private _gonsBalances; // Maps addresses to their gon balances
+    mapping(address => mapping(address => uint256)) private _allowances; // ERC20 allowances
 
     // Governance
-    address public govContract;
+    address public govContract; // Address of the governance contract
 
     // Treasury and fees
-    address public treasury;
-    bool public transfersWithFee;
-    uint256 public transferFeeBasisPoints;
+    address public treasury; // Address that collects fees
+    bool public transfersWithFee; // Flag to enable/disable transfer fees
+    uint256 public transferFeeBasisPoints; // Total transfer fee in basis points (e.g., 200 = 2%)
 
     // Fee splitting
-    uint256 public treasuryFeeBasisPoints; 
-    uint256 public lpFeeBasisPoints;       
+    uint256 public treasuryFeeBasisPoints; // Portion of fee going to treasury
+    uint256 public lpFeeBasisPoints; // Portion of fee going to liquidity pools
 
     // Multiple liquidity pools
-    EnumerableSet.AddressSet private liquidityPools;
+    EnumerableSet.AddressSet private liquidityPools; // Set of approved liquidity pool addresses
 
     // Rebase frequency
-    uint256 public rebaseFrequency;
-    uint256 public lastRebaseTimestamp;
+    uint256 public rebaseFrequency; // Minimum time between rebases (in seconds)
+    uint256 public lastRebaseTimestamp; // Timestamp of the last rebase
 
     // Events
-    event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratioNum, uint256 ratioDen, uint256 timestamp);
-    event RebaseInSteps(uint256 steps, uint256 finalMarketCap, uint256 finalSupply, uint256 timestamp);
+    event Rebase(
+        uint256 oldMarketCap, 
+        uint256 newMarketCap, 
+        uint256 ratioNum, 
+        uint256 ratioDen, 
+        uint256 timestamp
+    );
+    event RebaseInSteps(
+        uint256 steps, 
+        uint256 finalMarketCap, 
+        uint256 finalSupply, 
+        uint256 timestamp
+    );
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -93,11 +106,16 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         treasury = _treasury;
 
         // Scale and set up initial supply
+        // Example: If initialMarketCap = 1000, scaledMcap = 1000 * 1e18 = 1e21
         uint256 scaledMcap = initialMarketCap * 1e18;
         _totalSupply = scaledMcap;
         lastMarketCap = scaledMcap;
 
+        // Initialize gons per fragment
         _gonsPerFragment = MAX_GONS / _totalSupply;
+
+        // Allocate all tokens to the treasury
+        // totalGons = _totalSupply * _gonsPerFragment = (1e21 * (MAX_GONS / 1e21)) = MAX_GONS
         uint256 totalGons = _totalSupply * _gonsPerFragment;
         _gonsBalances[treasury] = totalGons;
 
@@ -113,6 +131,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         lpFeeBasisPoints = 100;       // 1% to LPs
     }
 
+    /**
+     * @dev Modifier to restrict functions to admin roles (owner or governor).
+     */
     modifier onlyAdmin() {
         require(
             msg.sender == owner() || 
@@ -125,28 +146,57 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     //--------------------------------------------------------------------------
     // ERC20 standard functions
     //--------------------------------------------------------------------------
+
+    /**
+     * @notice Returns the total supply of the token.
+     */
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
 
+    /**
+     * @notice Returns the token balance of a given account.
+     * @param account The address to query.
+     */
     function balanceOf(address account) public view returns (uint256) {
         return _gonsBalances[account] / _gonsPerFragment;
     }
 
+    /**
+     * @notice Returns the allowance from owner to spender.
+     * @param owner_ The token owner.
+     * @param spender The spender.
+     */
     function allowance(address owner_, address spender) public view returns (uint256) {
         return _allowances[owner_][spender];
     }
 
+    /**
+     * @notice Transfers tokens from the caller to a recipient.
+     * @param to Recipient address.
+     * @param value Amount of tokens to transfer.
+     */
     function transfer(address to, uint256 value) public whenNotPaused returns (bool) {
         _transfer(msg.sender, to, value);
         return true;
     }
 
+    /**
+     * @notice Approves a spender to spend a certain amount of tokens.
+     * @param spender Spender address.
+     * @param value Amount to approve.
+     */
     function approve(address spender, uint256 value) public whenNotPaused returns (bool) {
         _approve(msg.sender, spender, value);
         return true;
     }
 
+    /**
+     * @notice Transfers tokens from one address to another using allowance mechanism.
+     * @param from Sender address.
+     * @param to Recipient address.
+     * @param value Amount of tokens to transfer.
+     */
     function transferFrom(address from, address to, uint256 value) public whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[from][msg.sender];
         require(currentAllowance >= value, "Exceeds allowance");
@@ -155,11 +205,21 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         return true;
     }
 
+    /**
+     * @notice Increases the allowance granted to a spender.
+     * @param spender Spender address.
+     * @param addedValue Amount to increase.
+     */
     function increaseAllowance(address spender, uint256 addedValue) external whenNotPaused returns (bool) {
         _approve(msg.sender, spender, _allowances[msg.sender][spender] + addedValue);
         return true;
     }
 
+    /**
+     * @notice Decreases the allowance granted to a spender.
+     * @param spender Spender address.
+     * @param subtractedValue Amount to decrease.
+     */
     function decreaseAllowance(address spender, uint256 subtractedValue) external whenNotPaused returns (bool) {
         uint256 currentAllowance = _allowances[msg.sender][spender];
         require(currentAllowance >= subtractedValue, "Below zero");
@@ -170,57 +230,76 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     //--------------------------------------------------------------------------
     // Internal transfer and approve
     //--------------------------------------------------------------------------
+
+    /**
+     * @notice Internal function to handle token transfers with fee logic.
+     * @param from Sender address.
+     * @param to Recipient address.
+     * @param value Amount of tokens to transfer.
+     */
     function _transfer(address from, address to, uint256 value) internal {
         require(from != address(0), "From zero");
         require(to != address(0), "To zero");
         require(balanceOf(from) >= value, "Balance too low");
 
+        // Calculate the gon amount to transfer
         uint256 gonsAmount = value * _gonsPerFragment;
         _gonsBalances[from] -= gonsAmount;
 
         if (transfersWithFee && transferFeeBasisPoints > 0) {
+            // Calculate total fee in gons
             uint256 feeGons = (gonsAmount * transferFeeBasisPoints) / 10000;
+
+            // Split the fee into treasury and liquidity pool portions
             uint256 treasuryFeeGons = (feeGons * treasuryFeeBasisPoints) / transferFeeBasisPoints;
             uint256 lpFeeGons = feeGons - treasuryFeeGons;
 
+            // Remaining gons after fee deduction
             uint256 gonsAfterFee = gonsAmount - feeGons;
 
             // Allocate treasury fee
             _gonsBalances[treasury] += treasuryFeeGons;
             emit Transfer(from, treasury, treasuryFeeGons / _gonsPerFragment);
 
-            // Allocate LP fee
+            // Allocate liquidity pool fee
             uint256 numberOfPools = liquidityPools.length();
             if (lpFeeGons > 0 && numberOfPools > 0) {
-                // Split evenly among LPs
+                // Split the LP fee evenly among all approved liquidity pools
                 uint256 feePerPool = lpFeeGons / numberOfPools;
                 for (uint256 i = 0; i < numberOfPools; i++) {
                     address pool = liquidityPools.at(i);
                     _gonsBalances[pool] += feePerPool;
                     emit Transfer(from, pool, feePerPool / _gonsPerFragment);
                 }
-                // Any leftover fraction goes to treasury
+
+                // Handle any leftover gons due to integer division
                 uint256 leftover = lpFeeGons - (feePerPool * numberOfPools);
                 if (leftover > 0) {
                     _gonsBalances[treasury] += leftover;
                     emit Transfer(from, treasury, leftover / _gonsPerFragment);
                 }
             } else {
-                // If no pools, everything goes to treasury
+                // If no liquidity pools are set, send all LP fees to the treasury
                 _gonsBalances[treasury] += lpFeeGons;
                 emit Transfer(from, treasury, lpFeeGons / _gonsPerFragment);
             }
 
-            // Send remainder to recipient
+            // Transfer the remaining gons to the recipient
             _gonsBalances[to] += gonsAfterFee;
             emit Transfer(from, to, gonsAfterFee / _gonsPerFragment);
         } else {
-            // No fee scenario
+            // No fee scenario: transfer full amount
             _gonsBalances[to] += gonsAmount;
             emit Transfer(from, to, value);
         }
     }
 
+    /**
+     * @notice Internal function to handle approvals.
+     * @param owner_ Owner address.
+     * @param spender Spender address.
+     * @param value Amount to approve.
+     */
     function _approve(address owner_, address spender, uint256 value) internal {
         require(owner_ != address(0), "Owner zero");
         require(spender != address(0), "Spender zero");
@@ -229,137 +308,160 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     //--------------------------------------------------------------------------
-    // Rebase logic #1: Fraction-based approach to avoid tiny rounding
+    // Rebase logic: Hybrid approach
     //--------------------------------------------------------------------------
+
     /**
-     * @notice Rebase using fraction math. Instead of multiple multiplications by 1e18,
-     *         we treat the ratio as (newMarketCapScaled / oldMarketCapScaled).
-     * @param newMarketCap The updated market cap (unscaled, i.e., in "human-readable" units).
-     *                     E.g., if you want to set the new market cap to 1,000, pass 1000 (not 1000e18).
+     * @notice Rebase the token supply based on the new market cap (in "human-readable" units).
+     *         This function uses a hybrid approach combining fractional math and stepwise rebases
+     *         to prevent rounding errors and ensure `newSupply` never becomes zero.
+     * @param newMarketCap The updated market cap (not yet scaled by 1e18).
+     *                     For example, if the new market cap is 3,381,284,211,318 USD, pass 3381284211318.
      */
-    function rebaseFractional(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
+    function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Market cap must be > 0");
         require(block.timestamp >= lastRebaseTimestamp + rebaseFrequency, "Rebase frequency not met");
 
-        // oldMarketCap is stored as a scaled (multiplied by 1e18) value
-        uint256 oldMarketCapScaled = lastMarketCap; 
-        uint256 oldSupply = _totalSupply;
+        // Scale the new market cap by 1e18 to match the stored scaled market cap
+        // Example: newMarketCap = 3381284211318 -> scaledNewMarketCap = 3381284211318 * 1e18
+        uint256 newMarketCapScaled = newMarketCap * 1e18;
 
-        // scale newMarketCap once by 1e18 to match stored oldMarketCap
-        uint256 newMarketCapScaled = newMarketCap * 1e18; 
+        // Retrieve the old market cap (already scaled)
+        uint256 oldMarketCapScaled = lastMarketCap;
 
-        // fraction = new / old
-        // we'll keep it as ratioNum / ratioDen
+        // Compute the ratio numerator and denominator
+        // ratio = newMarketCapScaled / oldMarketCapScaled
+        // To maintain precision, we keep them as separate variables
         uint256 ratioNum = newMarketCapScaled;
         uint256 ratioDen = oldMarketCapScaled;
 
-        // newSupply = (oldSupply * ratioNum) / ratioDen
-        uint256 newSupply = (oldSupply * ratioNum) / ratioDen;
-        require(newSupply > 0, "New supply must be > 0");
+        // Attempt a fractional rebase: newSupply = (oldSupply * ratioNum) / ratioDen
+        uint256 newSupply = (_totalSupply * ratioNum) / ratioDen;
 
-        // update _totalSupply, _gonsPerFragment
-        _totalSupply = newSupply;
-        _gonsPerFragment = MAX_GONS / _totalSupply;
-
-        // update lastMarketCap to the new scaled value
-        lastMarketCap = newMarketCapScaled;
-        lastRebaseTimestamp = block.timestamp;
-
-        emit Rebase(oldMarketCapScaled, newMarketCapScaled, ratioNum, ratioDen, block.timestamp);
-    }
-
-    //--------------------------------------------------------------------------
-    // Rebase logic #2: Stepwise approach for large negative changes
-    //--------------------------------------------------------------------------
-    /**
-     * @notice For very large negative rebases, we can do multiple smaller steps
-     *         to avoid rounding to zero. The final ratio = newMarketCap / oldMarketCap
-     *         is split across `steps` iterations.
-     * @param newMarketCap The target new market cap (human-readable, not scaled).
-     * @param steps How many smaller rebases to do in one transaction.
-     */
-    function rebaseInSteps(uint256 newMarketCap, uint256 steps) external onlyAdmin nonReentrant whenNotPaused {
-        require(newMarketCap > 0, "Market cap must be > 0");
-        require(steps > 0, "Steps must be > 0");
-        require(block.timestamp >= lastRebaseTimestamp + rebaseFrequency, "Rebase frequency not met");
-
-        // For example, if old = 3e30, new = 2.5e30, ratio ~ 0.833333...
-        // Doing that in a single step could be fine, but if new is super small,
-        // we risk an integer underflow to zero. Let's break it up.
-
-        uint256 oldMarketCapScaled = lastMarketCap;
-        uint256 oldSupply = _totalSupply;
-
-        // scale newMarketCap by 1e18
-        uint256 newMarketCapScaled = newMarketCap * 1e18;
-
-        // Calculate overall ratio = new / old
-        // We'll split this ratio across multiple steps
-        // ratioNum / ratioDen = (newMarketCapScaled / oldMarketCapScaled)
-        // So ratioNum = newMarketCapScaled, ratioDen = oldMarketCapScaled
-        // We'll effectively do "fractional" rebases multiple times:
-        // e.g., each step does the 'step ratio' = ( ratioNum / ratioDen )^(1/steps )
-
-        // For integer math simplicity, we can't do real exponent roots easily. 
-        // A simpler approach: do repeated fraction-based rebases in a loop,
-        // each time updating "oldMarketCapScaled" toward "newMarketCapScaled."
-        // This is approximate because each iteration modifies the new intermediate state.
-
-        // If new cap < old cap, we do a negative rebase. If bigger, it's a positive one.
-        // We'll approach the final supply in `steps` increments.
-
-        // Step ratio:
-        // Instead of computing an nth root in pure integer math (which is tricky),
-        // we linearly interpolate the intermediate market cap over steps. 
-        // This is simpler but not a perfect exponential ratio. It's a piecewise approximation.
-
-        // Example:
-        // We'll do multiple partial "fractional" rebases going from old -> new.
-
-        // For each step, we compute an intermediate target market cap:
-        // stepMcap = oldMcap + ( (newMcap - oldMcap) * i / steps )
-        // Then rebase fractionally to that stepMcap.
-        // This won't match a perfect geometric progression, but it's a safe approach 
-        // that won't cause newSupply to drop to zero suddenly.
-
-        uint256 diff = 0;
-        bool isNegative = false;
-        if (newMarketCapScaled < oldMarketCapScaled) {
-            diff = oldMarketCapScaled - newMarketCapScaled; 
-            isNegative = true;
-        } else {
-            diff = newMarketCapScaled - oldMarketCapScaled;
-        }
-
-        for (uint256 i = 1; i <= steps; i++) {
-            // partial target: old + ((new - old) * i / steps)
-            uint256 partialTarget = isNegative
-                ? (oldMarketCapScaled - (diff * i / steps))
-                : (oldMarketCapScaled + (diff * i / steps));
-
-            // now do a fractional rebase from oldMarketCapScaled -> partialTarget
-            uint256 ratioNum = partialTarget;       // numerator
-            uint256 ratioDen = lastMarketCap;       // denominator (the "old" MC from previous step)
-            uint256 intermediateSupply = (_totalSupply * ratioNum) / ratioDen;
-
-            // edge case: if the fraction is super small, this might become 0 
-            // (should be extremely unlikely unless partialTarget is extremely small).
-            require(intermediateSupply > 0, "Partial rebase would yield 0 supply");
-            
-            // apply
-            _totalSupply = intermediateSupply;
+        if (newSupply > 0) {
+            /**
+             * @dev Fractional Rebase Path
+             * 
+             * If the calculated new supply is greater than zero, perform a standard fractional rebase.
+             * This is suitable for small to moderate changes in market cap.
+             * 
+             * Example:
+             * - oldMarketCapScaled = 3.293959595424e30
+             * - newMarketCapScaled = 3.381284211318e30
+             * - ratio = 3.381284211318e30 / 3.293959595424e30 ≈ 1.027e18
+             * - newSupply = oldSupply * 1.027e18 / 1e18 ≈ oldSupply * 1.027
+             *   (i.e., a ~2.7% positive rebase)
+             */
+            _totalSupply = newSupply;
             _gonsPerFragment = MAX_GONS / _totalSupply;
-            lastMarketCap = partialTarget; 
+
+            // Update the last market cap and timestamp
+            lastMarketCap = newMarketCapScaled;
+            lastRebaseTimestamp = block.timestamp;
+
+            emit Rebase(oldMarketCapScaled, newMarketCapScaled, ratioNum, ratioDen, block.timestamp);
+        } else {
+            /**
+             * @dev Stepwise Rebase Path
+             * 
+             * If the fractional rebase would result in a `newSupply` of zero (due to a massive negative rebase),
+             * split the rebase into smaller, manageable steps to avoid integer division issues.
+             * 
+             * Example:
+             * - oldMarketCapScaled = 3.293959595424e30
+             * - newMarketCapScaled = 3.381284211318e20 (a significant decrease)
+             * - Attempting (oldSupply * 3.381284211318e20) / 3.293959595424e30 ≈ 1.027e-10 * oldSupply
+             *   which could underflow to zero.
+             * 
+             * Instead, perform multiple smaller rebases:
+             * - Step 1: Apply a 10% decrease -> newMarketCapStep1 = oldMarketCapScaled * 0.90
+             * - Step 2: Apply another 10% decrease on Step 1's market cap
+             * - ...
+             * - Repeat until the final market cap is reached
+             */
+
+            // Define maximum number of steps to prevent excessive gas usage
+            uint256 maxSteps = 10;
+            uint256 stepsPerformed = 0;
+
+            // Current supply and market cap for iterative rebasing
+            uint256 currentSupply = _totalSupply;
+            uint256 currentMarketCap = oldMarketCapScaled;
+
+            // Determine if the rebase is positive or negative
+            bool isPositive = newMarketCapScaled > currentMarketCap;
+
+            // Define maximum step ratio:
+            // - For positive rebases: allow up to a 10% increase per step
+            // - For negative rebases: allow up to a 10% decrease per step
+            uint256 maxStepRatio = isPositive ? 1100000000000000000 : 900000000000000000; // 1.10e18 or 0.90e18
+
+            // Loop to perform stepwise rebases
+            while (
+                (isPositive && newMarketCapScaled > (currentMarketCap * maxStepRatio) / 1e18) ||
+                (!isPositive && newMarketCapScaled < (currentMarketCap * maxStepRatio) / 1e18)
+            ) {
+                require(stepsPerformed < maxSteps, "Too many rebase steps");
+
+                // Apply the step ratio to determine the intermediate market cap
+                uint256 stepRatio = maxStepRatio;
+
+                // Calculate the new market cap for this step
+                // Example for negative rebase:
+                // stepRatio = 0.90e18
+                // newMarketCapStep = currentMarketCap * 0.90e18 / 1e18 = currentMarketCap * 0.90
+                uint256 intermediateMarketCap = (currentMarketCap * stepRatio) / 1e18;
+
+                // Calculate the new supply based on the intermediate market cap
+                uint256 intermediateSupply = (currentSupply * stepRatio) / 1e18;
+
+                // Ensure that the intermediate supply does not underflow to zero
+                require(intermediateSupply > 0, "Intermediate supply must be > 0");
+
+                // Update the total supply and gons per fragment
+                _totalSupply = intermediateSupply;
+                _gonsPerFragment = MAX_GONS / _totalSupply;
+
+                // Update the current supply and market cap for the next iteration
+                currentSupply = _totalSupply;
+                currentMarketCap = intermediateMarketCap;
+
+                // Update the last market cap to reflect the intermediate state
+                lastMarketCap = currentMarketCap;
+
+                // Increment the steps performed
+                stepsPerformed += 1;
+            }
+
+            // After stepwise adjustments, perform the final fractional rebase to reach the exact target
+            // newSupply = (currentSupply * newMarketCapScaled) / currentMarketCap
+            uint256 finalRatioNum = newMarketCapScaled;
+            uint256 finalRatioDen = currentMarketCap;
+
+            uint256 finalSupply = (currentSupply * finalRatioNum) / finalRatioDen;
+            require(finalSupply > 0, "Final supply must be > 0");
+
+            // Update the total supply and gons per fragment to the final values
+            _totalSupply = finalSupply;
+            _gonsPerFragment = MAX_GONS / _totalSupply;
+
+            // Update the last market cap and timestamp
+            lastMarketCap = newMarketCapScaled;
+            lastRebaseTimestamp = block.timestamp;
+
+            emit Rebase(oldMarketCapScaled, newMarketCapScaled, finalRatioNum, finalRatioDen, block.timestamp);
+            emit RebaseInSteps(stepsPerformed, lastMarketCap, _totalSupply, block.timestamp);
         }
-
-        lastRebaseTimestamp = block.timestamp;
-
-        emit RebaseInSteps(steps, lastMarketCap, _totalSupply, block.timestamp);
     }
 
-    //--------------------------------------------------------------------------
+    //---------------------------------------------------------------------------
     // Admin functions
-    //--------------------------------------------------------------------------
+    //---------------------------------------------------------------------------
+
+    /**
+     * @notice Sets the governor contract address.
+     * @param _govContract New governor contract address.
+     */
     function setGovernorContract(address _govContract) external onlyOwner {
         require(_govContract != address(0), "Governor zero address");
         address oldGov = govContract;
@@ -369,6 +471,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice (No longer used for rebase logic, but kept for reference in case of public sale)
+     * @param _publicSaleContract New public sale contract address.
      */
     function setPublicSaleContract(address _publicSaleContract) external onlyOwner {
         require(_publicSaleContract != address(0), "Public sale zero address");
@@ -377,8 +480,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Add a liquidity pool address to the approved list.
-     * @param _pool Address of the liquidity pool (C100/USDC pair).
+     * @notice Adds a liquidity pool address to the approved list.
+     * @param _pool Address of the liquidity pool (e.g., C100/USDC pair).
      */
     function addLiquidityPool(address _pool) external onlyAdmin {
         require(_pool != address(0), "Pool zero address");
@@ -388,7 +491,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Remove a liquidity pool address from the approved list.
+     * @notice Removes a liquidity pool address from the approved list.
      * @param _pool Address of the liquidity pool to remove.
      */
     function removeLiquidityPool(address _pool) external onlyAdmin {
@@ -397,17 +500,25 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         emit LiquidityPoolRemoved(_pool);
     }
 
+    /**
+     * @notice Returns the count of approved liquidity pools.
+     */
     function getLiquidityPoolsCount() external view returns (uint256) {
         return liquidityPools.length();
     }
 
+    /**
+     * @notice Returns the liquidity pool address at a specific index.
+     * @param index Index in the liquidityPools set.
+     */
     function getLiquidityPoolAt(uint256 index) external view returns (address) {
         require(index < liquidityPools.length(), "Index out of bounds");
         return liquidityPools.at(index);
     }
 
     /**
-     * @notice Set the rebase frequency in seconds.
+     * @notice Sets the rebase frequency.
+     * @param newFrequency New rebase frequency in seconds.
      */
     function setRebaseFrequency(uint256 newFrequency) external onlyAdmin {
         require(newFrequency > 0, "Frequency must be > 0");
@@ -416,7 +527,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Set fee parameters.
+     * @notice Sets the fee parameters for transfers.
+     * @param newTreasuryFeeBasisPoints New treasury fee in basis points.
+     * @param newLpFeeBasisPoints New liquidity pool fee in basis points.
      */
     function setFeeParameters(uint256 newTreasuryFeeBasisPoints, uint256 newLpFeeBasisPoints) external onlyAdmin {
         require(newTreasuryFeeBasisPoints + newLpFeeBasisPoints <= transferFeeBasisPoints, "Total fee exceeded");
@@ -426,7 +539,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Update the treasury address.
+     * @notice Updates the treasury address.
+     * @param newTreasury New treasury address.
      */
     function updateTreasuryAddress(address newTreasury) external onlyAdmin {
         require(newTreasury != address(0), "Zero address");
@@ -436,7 +550,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Burn tokens from the treasury.
+     * @notice Burns a specified amount of tokens from the treasury.
+     * @param amount Amount of tokens to burn.
      */
     function burnFromTreasury(uint256 amount) external onlyAdmin nonReentrant {
         require(balanceOf(treasury) >= amount, "Not enough tokens in treasury");
@@ -451,21 +566,23 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @notice Pause the contract.
+     * @notice Pauses the contract, disabling transfers and rebase.
      */
     function pauseContract() external onlyAdmin {
         _pause();
     }
 
     /**
-     * @notice Unpause the contract.
+     * @notice Unpauses the contract, enabling transfers and rebase.
      */
     function unpauseContract() external onlyAdmin {
         _unpause();
     }
 
     /**
-     * @notice Rescue tokens accidentally sent to the contract.
+     * @notice Rescues tokens accidentally sent to the contract, excluding C100 and treasury tokens.
+     * @param token Address of the token to rescue.
+     * @param amount Amount of tokens to rescue.
      */
     function rescueTokens(address token, uint256 amount) external onlyAdmin {
         require(token != address(this), "Cannot rescue C100 tokens");
