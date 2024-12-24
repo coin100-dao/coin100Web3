@@ -55,7 +55,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 public lastRebaseTimestamp;
 
     // Events
-    event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratio, uint256 timestamp);
+    event Rebase(uint256 oldMarketCap, uint256 newMarketCap, uint256 ratioNum, uint256 ratioDen, uint256 timestamp);
+    event RebaseInSteps(uint256 steps, uint256 finalMarketCap, uint256 finalSupply, uint256 timestamp);
+
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
     event GovernorContractSet(address indexed oldGovernor, address indexed newGovernor);
@@ -78,15 +80,14 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 initialMarketCap,
         address _treasury
     )
-        Ownable(msg.sender)
+        Ownable(msg.sender)  // The "Ownable" constructor is called with deployer as initial owner
         ReentrancyGuard()
         Pausable()
     {
         require(_treasury != address(0), "Treasury address cannot be zero");
         require(initialMarketCap > 0, "Initial market cap must be > 0");
 
-        // Give the contract deployer ownership initially (standard Ownable).
-        // Then transfer ownership to treasury:
+        // Transfer ownership to the treasury immediately
         transferOwnership(_treasury);
 
         treasury = _treasury;
@@ -121,7 +122,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         _;
     }
 
+    //--------------------------------------------------------------------------
     // ERC20 standard functions
+    //--------------------------------------------------------------------------
     function totalSupply() public view returns (uint256) {
         return _totalSupply;
     }
@@ -130,8 +133,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         return _gonsBalances[account] / _gonsPerFragment;
     }
 
-    function allowance(address owner, address spender) public view returns (uint256) {
-        return _allowances[owner][spender];
+    function allowance(address owner_, address spender) public view returns (uint256) {
+        return _allowances[owner_][spender];
     }
 
     function transfer(address to, uint256 value) public whenNotPaused returns (bool) {
@@ -164,7 +167,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         return true;
     }
 
+    //--------------------------------------------------------------------------
     // Internal transfer and approve
+    //--------------------------------------------------------------------------
     function _transfer(address from, address to, uint256 value) internal {
         require(from != address(0), "From zero");
         require(to != address(0), "To zero");
@@ -223,42 +228,138 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         emit Approval(owner_, spender, value);
     }
 
-    // Rebase logic: purely off-chain market cap passed in by admin
+    //--------------------------------------------------------------------------
+    // Rebase logic #1: Fraction-based approach to avoid tiny rounding
+    //--------------------------------------------------------------------------
     /**
-     * @notice Rebase the token supply based on the new market cap (in "human-readable" units).
-     *         The contract automatically scales it by 1e18 to match decimals.
-     * @param newMarketCap The updated market cap (not yet scaled by 1e18).
+     * @notice Rebase using fraction math. Instead of multiple multiplications by 1e18,
+     *         we treat the ratio as (newMarketCapScaled / oldMarketCapScaled).
+     * @param newMarketCap The updated market cap (unscaled, i.e., in "human-readable" units).
+     *                     E.g., if you want to set the new market cap to 1,000, pass 1000 (not 1000e18).
      */
-    function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
+    function rebaseFractional(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         require(newMarketCap > 0, "Market cap must be > 0");
         require(block.timestamp >= lastRebaseTimestamp + rebaseFrequency, "Rebase frequency not met");
 
-        uint256 oldMarketCap = lastMarketCap;
+        // oldMarketCap is stored as a scaled (multiplied by 1e18) value
+        uint256 oldMarketCapScaled = lastMarketCap; 
         uint256 oldSupply = _totalSupply;
 
-        // Scale the newMarketCap by 1e18
-        uint256 scaledNewMarketCap = newMarketCap * 1e18;
+        // scale newMarketCap once by 1e18 to match stored oldMarketCap
+        uint256 newMarketCapScaled = newMarketCap * 1e18; 
 
-        // Calculate ratio of new vs old
-        // ratioScaled = (newMcap / oldMcap) * 1e18
-        uint256 ratioScaled = (scaledNewMarketCap * 1e18) / oldMarketCap;
-        // newSupply = ratioScaled * oldSupply / 1e18
-        uint256 newSupply = (ratioScaled * oldSupply) / 1e18;
+        // fraction = new / old
+        // we'll keep it as ratioNum / ratioDen
+        uint256 ratioNum = newMarketCapScaled;
+        uint256 ratioDen = oldMarketCapScaled;
+
+        // newSupply = (oldSupply * ratioNum) / ratioDen
+        uint256 newSupply = (oldSupply * ratioNum) / ratioDen;
         require(newSupply > 0, "New supply must be > 0");
 
-        // Update gons per fragment
-        _gonsPerFragment = MAX_GONS / newSupply;
-
-        // Update supply & lastMarketCap
+        // update _totalSupply, _gonsPerFragment
         _totalSupply = newSupply;
-        lastMarketCap = scaledNewMarketCap;
+        _gonsPerFragment = MAX_GONS / _totalSupply;
+
+        // update lastMarketCap to the new scaled value
+        lastMarketCap = newMarketCapScaled;
         lastRebaseTimestamp = block.timestamp;
 
-        emit Rebase(oldMarketCap, scaledNewMarketCap, ratioScaled, block.timestamp);
+        emit Rebase(oldMarketCapScaled, newMarketCapScaled, ratioNum, ratioDen, block.timestamp);
     }
 
-    // Admin functions
+    //--------------------------------------------------------------------------
+    // Rebase logic #2: Stepwise approach for large negative changes
+    //--------------------------------------------------------------------------
+    /**
+     * @notice For very large negative rebases, we can do multiple smaller steps
+     *         to avoid rounding to zero. The final ratio = newMarketCap / oldMarketCap
+     *         is split across `steps` iterations.
+     * @param newMarketCap The target new market cap (human-readable, not scaled).
+     * @param steps How many smaller rebases to do in one transaction.
+     */
+    function rebaseInSteps(uint256 newMarketCap, uint256 steps) external onlyAdmin nonReentrant whenNotPaused {
+        require(newMarketCap > 0, "Market cap must be > 0");
+        require(steps > 0, "Steps must be > 0");
+        require(block.timestamp >= lastRebaseTimestamp + rebaseFrequency, "Rebase frequency not met");
 
+        // For example, if old = 3e30, new = 2.5e30, ratio ~ 0.833333...
+        // Doing that in a single step could be fine, but if new is super small,
+        // we risk an integer underflow to zero. Let's break it up.
+
+        uint256 oldMarketCapScaled = lastMarketCap;
+        uint256 oldSupply = _totalSupply;
+
+        // scale newMarketCap by 1e18
+        uint256 newMarketCapScaled = newMarketCap * 1e18;
+
+        // Calculate overall ratio = new / old
+        // We'll split this ratio across multiple steps
+        // ratioNum / ratioDen = (newMarketCapScaled / oldMarketCapScaled)
+        // So ratioNum = newMarketCapScaled, ratioDen = oldMarketCapScaled
+        // We'll effectively do "fractional" rebases multiple times:
+        // e.g., each step does the 'step ratio' = ( ratioNum / ratioDen )^(1/steps )
+
+        // For integer math simplicity, we can't do real exponent roots easily. 
+        // A simpler approach: do repeated fraction-based rebases in a loop,
+        // each time updating "oldMarketCapScaled" toward "newMarketCapScaled."
+        // This is approximate because each iteration modifies the new intermediate state.
+
+        // If new cap < old cap, we do a negative rebase. If bigger, it's a positive one.
+        // We'll approach the final supply in `steps` increments.
+
+        // Step ratio:
+        // Instead of computing an nth root in pure integer math (which is tricky),
+        // we linearly interpolate the intermediate market cap over steps. 
+        // This is simpler but not a perfect exponential ratio. It's a piecewise approximation.
+
+        // Example:
+        // We'll do multiple partial "fractional" rebases going from old -> new.
+
+        // For each step, we compute an intermediate target market cap:
+        // stepMcap = oldMcap + ( (newMcap - oldMcap) * i / steps )
+        // Then rebase fractionally to that stepMcap.
+        // This won't match a perfect geometric progression, but it's a safe approach 
+        // that won't cause newSupply to drop to zero suddenly.
+
+        uint256 diff = 0;
+        bool isNegative = false;
+        if (newMarketCapScaled < oldMarketCapScaled) {
+            diff = oldMarketCapScaled - newMarketCapScaled; 
+            isNegative = true;
+        } else {
+            diff = newMarketCapScaled - oldMarketCapScaled;
+        }
+
+        for (uint256 i = 1; i <= steps; i++) {
+            // partial target: old + ((new - old) * i / steps)
+            uint256 partialTarget = isNegative
+                ? (oldMarketCapScaled - (diff * i / steps))
+                : (oldMarketCapScaled + (diff * i / steps));
+
+            // now do a fractional rebase from oldMarketCapScaled -> partialTarget
+            uint256 ratioNum = partialTarget;       // numerator
+            uint256 ratioDen = lastMarketCap;       // denominator (the "old" MC from previous step)
+            uint256 intermediateSupply = (_totalSupply * ratioNum) / ratioDen;
+
+            // edge case: if the fraction is super small, this might become 0 
+            // (should be extremely unlikely unless partialTarget is extremely small).
+            require(intermediateSupply > 0, "Partial rebase would yield 0 supply");
+            
+            // apply
+            _totalSupply = intermediateSupply;
+            _gonsPerFragment = MAX_GONS / _totalSupply;
+            lastMarketCap = partialTarget; 
+        }
+
+        lastRebaseTimestamp = block.timestamp;
+
+        emit RebaseInSteps(steps, lastMarketCap, _totalSupply, block.timestamp);
+    }
+
+    //--------------------------------------------------------------------------
+    // Admin functions
+    //--------------------------------------------------------------------------
     function setGovernorContract(address _govContract) external onlyOwner {
         require(_govContract != address(0), "Governor zero address");
         address oldGov = govContract;
