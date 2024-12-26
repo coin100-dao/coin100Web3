@@ -313,9 +313,8 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Rebase the token supply based on the new market cap (in "human-readable" units).
-     *         This function uses a hybrid approach combining fractional math and stepwise rebases
-     *         to prevent rounding errors and ensure `newSupply` never becomes zero.
-     * @param newMarketCap The updated market cap (not yet scaled by 1e18).
+     *         This function uses a pure fractional approach to adjust the supply.
+     * @param newMarketCap The updated market cap (not scaled by 1e18).
      *                     For example, if the new market cap is 3,381,284,211,318 USD, pass 3381284211318.
      */
     function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
@@ -323,136 +322,39 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         require(block.timestamp >= lastRebaseTimestamp + rebaseFrequency, "Rebase frequency not met");
 
         // Scale the new market cap by 1e18 to match the stored scaled market cap
-        // Example: newMarketCap = 3381284211318 -> scaledNewMarketCap = 3381284211318 * 1e18
         uint256 newMarketCapScaled = newMarketCap * 1e18;
-
-        // Retrieve the old market cap (already scaled)
         uint256 oldMarketCapScaled = lastMarketCap;
 
-        // Compute the ratio numerator and denominator
+        // Calculate the ratio with high precision
         // ratio = newMarketCapScaled / oldMarketCapScaled
-        // To maintain precision, we keep them as separate variables
-        uint256 ratioNum = newMarketCapScaled;
-        uint256 ratioDen = oldMarketCapScaled;
+        // To maintain precision, multiply by 1e18 before division
+        uint256 ratio = (newMarketCapScaled * 1e18) / oldMarketCapScaled;
 
-        // Attempt a fractional rebase: newSupply = (oldSupply * ratioNum) / ratioDen
-        uint256 newSupply = (_totalSupply * ratioNum) / ratioDen;
+        // Calculate the new supply based on the ratio
+        // newSupply = (oldSupply * ratio) / 1e18
+        uint256 newSupply = (_totalSupply * ratio) / 1e18;
 
-        if (newSupply > 0) {
-            /**
-             * @dev Fractional Rebase Path
-             * 
-             * If the calculated new supply is greater than zero, perform a standard fractional rebase.
-             * This is suitable for small to moderate changes in market cap.
-             * 
-             * Example:
-             * - oldMarketCapScaled = 3.293959595424e30
-             * - newMarketCapScaled = 3.381284211318e30
-             * - ratio = 3.381284211318e30 / 3.293959595424e30 ≈ 1.027e18
-             * - newSupply = oldSupply * 1.027e18 / 1e18 ≈ oldSupply * 1.027
-             *   (i.e., a ~2.7% positive rebase)
-             */
-            _totalSupply = newSupply;
-            _gonsPerFragment = MAX_GONS / _totalSupply;
+        require(newSupply > 0, "New supply must be > 0");
 
-            // Update the last market cap and timestamp
-            lastMarketCap = newMarketCapScaled;
-            lastRebaseTimestamp = block.timestamp;
+        // Update total supply
+        _totalSupply = newSupply;
 
-            emit Rebase(oldMarketCapScaled, newMarketCapScaled, ratioNum, ratioDen, block.timestamp);
-        } else {
-            /**
-             * @dev Stepwise Rebase Path
-             * 
-             * If the fractional rebase would result in a `newSupply` of zero (due to a massive negative rebase),
-             * split the rebase into smaller, manageable steps to avoid integer division issues.
-             * 
-             * Example:
-             * - oldMarketCapScaled = 3.293959595424e30
-             * - newMarketCapScaled = 3.381284211318e20 (a significant decrease)
-             * - Attempting (oldSupply * 3.381284211318e20) / 3.293959595424e30 ≈ 1.027e-10 * oldSupply
-             *   which could underflow to zero.
-             * 
-             * Instead, perform multiple smaller rebases:
-             * - Step 1: Apply a 10% decrease -> newMarketCapStep1 = oldMarketCapScaled * 0.90
-             * - Step 2: Apply another 10% decrease on Step 1's market cap
-             * - ...
-             * - Repeat until the final market cap is reached
-             */
+        // Update gons per fragment to maintain the relationship between gons and tokens
+        _gonsPerFragment = MAX_GONS / _totalSupply;
 
-            // Define maximum number of steps to prevent excessive gas usage
-            uint256 maxSteps = 10;
-            uint256 stepsPerformed = 0;
+        // Update the last market cap and timestamp
+        lastMarketCap = newMarketCapScaled;
+        lastRebaseTimestamp = block.timestamp;
 
-            // Current supply and market cap for iterative rebasing
-            uint256 currentSupply = _totalSupply;
-            uint256 currentMarketCap = oldMarketCapScaled;
-
-            // Determine if the rebase is positive or negative
-            bool isPositive = newMarketCapScaled > currentMarketCap;
-
-            // Define maximum step ratio:
-            // - For positive rebases: allow up to a 10% increase per step
-            // - For negative rebases: allow up to a 10% decrease per step
-            uint256 maxStepRatio = isPositive ? 1100000000000000000 : 900000000000000000; // 1.10e18 or 0.90e18
-
-            // Loop to perform stepwise rebases
-            while (
-                (isPositive && newMarketCapScaled > (currentMarketCap * maxStepRatio) / 1e18) ||
-                (!isPositive && newMarketCapScaled < (currentMarketCap * maxStepRatio) / 1e18)
-            ) {
-                require(stepsPerformed < maxSteps, "Too many rebase steps");
-
-                // Apply the step ratio to determine the intermediate market cap
-                uint256 stepRatio = maxStepRatio;
-
-                // Calculate the new market cap for this step
-                // Example for negative rebase:
-                // stepRatio = 0.90e18
-                // newMarketCapStep = currentMarketCap * 0.90e18 / 1e18 = currentMarketCap * 0.90
-                uint256 intermediateMarketCap = (currentMarketCap * stepRatio) / 1e18;
-
-                // Calculate the new supply based on the intermediate market cap
-                uint256 intermediateSupply = (currentSupply * stepRatio) / 1e18;
-
-                // Ensure that the intermediate supply does not underflow to zero
-                require(intermediateSupply > 0, "Intermediate supply must be > 0");
-
-                // Update the total supply and gons per fragment
-                _totalSupply = intermediateSupply;
-                _gonsPerFragment = MAX_GONS / _totalSupply;
-
-                // Update the current supply and market cap for the next iteration
-                currentSupply = _totalSupply;
-                currentMarketCap = intermediateMarketCap;
-
-                // Update the last market cap to reflect the intermediate state
-                lastMarketCap = currentMarketCap;
-
-                // Increment the steps performed
-                stepsPerformed += 1;
-            }
-
-            // After stepwise adjustments, perform the final fractional rebase to reach the exact target
-            // newSupply = (currentSupply * newMarketCapScaled) / currentMarketCap
-            uint256 finalRatioNum = newMarketCapScaled;
-            uint256 finalRatioDen = currentMarketCap;
-
-            uint256 finalSupply = (currentSupply * finalRatioNum) / finalRatioDen;
-            require(finalSupply > 0, "Final supply must be > 0");
-
-            // Update the total supply and gons per fragment to the final values
-            _totalSupply = finalSupply;
-            _gonsPerFragment = MAX_GONS / _totalSupply;
-
-            // Update the last market cap and timestamp
-            lastMarketCap = newMarketCapScaled;
-            lastRebaseTimestamp = block.timestamp;
-
-            emit Rebase(oldMarketCapScaled, newMarketCapScaled, finalRatioNum, finalRatioDen, block.timestamp);
-            emit RebaseInSteps(stepsPerformed, lastMarketCap, _totalSupply, block.timestamp);
-        }
+        emit Rebase(
+            oldMarketCapScaled,  // Previous market cap
+            newMarketCapScaled,  // New market cap
+            ratio,               // Ratio numerator (scaled by 1e18)
+            1e18,                // Ratio denominator (fixed at 1e18 for precision)
+            block.timestamp      // Timestamp of the rebase
+        );
     }
+
 
     //---------------------------------------------------------------------------
     // Admin functions
