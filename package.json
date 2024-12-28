@@ -1,33 +1,31 @@
 {
   "name": "coin100",
   "version": "1.0.0",
-  "description": "## **Table of Contents**",
-  "main": "index.js",
-  "type": "module",
+  "description": "COIN100 - Top 100 Crypto Market Cap Index Token",
+  "type": "commonjs",
+  "main": "hardhat.config.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy_coin100.js",
+    "deploy:public-sale": "hardhat run scripts/deploy_public_sale.js"
   },
-  "keywords": [],
+  "keywords": [
+    "ethereum",
+    "smart-contracts",
+    "hardhat",
+    "solidity"
+  ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
-    "@eslint/js": "^9.15.0",
-    "@nomicfoundation/hardhat-verify": "^2.0.12",
-    "@nomiclabs/hardhat-ethers": "^2.2.3",
-    "@nomiclabs/hardhat-waffle": "^2.0.6",
-    "@openzeppelin/contracts": "^5.1.0",
-    "chai": "^5.1.2",
-    "dotenv": "^16.4.7",
-    "eslint": "^9.15.0",
-    "ethereum-waffle": "^4.0.10",
-    "ethers": "^5.7.2",
-    "globals": "^15.12.0",
-    "hardhat": "^2.22.17",
-    "prettier": "^3.3.3",
-    "solc": "^0.8.28"
-  },
-  "dependencies": {
-    "@chainlink/contracts": "^1.3.0",
-    "axios": "^1.7.7"
+    "@nomiclabs/hardhat-ethers": "^2.0.0",
+    "@nomiclabs/hardhat-waffle": "^2.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "chai": "^4.2.0",
+    "dotenv": "^16.0.0",
+    "ethereum-waffle": "^3.0.0",
+    "ethers": "^5.0.0",
+    "hardhat": "^2.19.0"
   }
 }

@@ -1,62 +1,36 @@
 // scripts/deploy_public_sale.js
-/**
- * Deploy script for C100PublicSale contract
- * 
- * Required environment variables or command line arguments:
- * - COIN100_ADDRESS: Address of the deployed COIN100 token
- * - PAYMENT_TOKEN: Address of the token used for payment (use zero address for native token)
- * - RATE: Exchange rate (e.g., "0.001" means 0.001 payment token per C100)
- * - TOKEN_SYMBOL: Symbol of the payment token
- * - TOKEN_NAME: Name of the payment token
- * - TOKEN_DECIMALS: Decimals of the payment token
- * - START_TIME: Unix timestamp for sale start (optional, defaults to 1 minute from deployment)
- * - END_TIME: Unix timestamp for sale end (optional, defaults to 30 days after start)
- * 
- * Example usage:
- * ```
- * npx hardhat run scripts/deploy_public_sale.js --network <network> \
- *   --coin100-address 0x... \
- *   --payment-token 0x... \
- *   --rate 0.001 \
- *   --token-symbol "USDT" \
- *   --token-name "Tether USD" \
- *   --token-decimals 6
- * ```
- */
-
-import { ethers } from "hardhat";
-import { process } from 'process';
+const { ethers } = require("hardhat");
 
 async function main() {
-  // Get command line arguments
-  const args = process.argv.slice(2);
-  const getArg = (flag) => {
-    const index = args.indexOf(flag);
-    return index !== -1 ? args[index + 1] : null;
-  };
+  const {
+    COIN100_ADDRESS,
+    PAYMENT_TOKEN,
+    RATE,
+    TOKEN_SYMBOL,
+    TOKEN_NAME,
+    TOKEN_DECIMALS
+  } = process.env;
 
-  // Get deployment parameters from arguments or environment variables
-  const coin100Address = getArg('--coin100-address') || process.env.COIN100_ADDRESS;
-  if (!coin100Address) {
+  if (!COIN100_ADDRESS) {
     throw new Error('COIN100_ADDRESS not provided');
   }
 
-  const paymentToken = getArg('--payment-token') || process.env.PAYMENT_TOKEN || "0x0000000000000000000000000000000000000000";
-  const rate = ethers.utils.parseUnits(getArg('--rate') || process.env.RATE || "0.001", 18);
-  const symbol = getArg('--token-symbol') || process.env.TOKEN_SYMBOL || "ETH";
-  const name = getArg('--token-name') || process.env.TOKEN_NAME || "Ethereum";
-  const decimals = parseInt(getArg('--token-decimals') || process.env.TOKEN_DECIMALS || "18");
+  const paymentToken = PAYMENT_TOKEN || "0x0000000000000000000000000000000000000000";
+  const rate = ethers.utils.parseUnits(RATE || "0.001", 18);
+  const symbol = TOKEN_SYMBOL || "ETH";
+  const name = TOKEN_NAME || "Ethereum";
+  const decimals = parseInt(TOKEN_DECIMALS || "18");
   
   const now = Math.floor(Date.now() / 1000);
-  const startTime = parseInt(getArg('--start-time') || process.env.START_TIME || (now + 60).toString());
-  const endTime = parseInt(getArg('--end-time') || process.env.END_TIME || (startTime + 30 * 24 * 60 * 60).toString());
+  const startTime = now + 60; // Start in 1 minute
+  const endTime = startTime + (30 * 24 * 60 * 60); // End in 30 days
 
   const [, treasury] = await ethers.getSigners();
 
   // Deploy C100PublicSale
   console.log('Deploying C100PublicSale with parameters:');
   console.log({
-    coin100Address,
+    coin100Address: COIN100_ADDRESS,
     paymentToken,
     rate: rate.toString(),
     symbol,
@@ -69,7 +43,7 @@ async function main() {
 
   const C100PublicSale = await ethers.getContractFactory("C100PublicSale");
   const publicSale = await C100PublicSale.deploy(
-    coin100Address,
+    COIN100_ADDRESS,
     paymentToken,
     rate,
     symbol,
@@ -87,8 +61,8 @@ async function main() {
 }
 
 main()
-  .then(() => process.exitCode = 0)
+  .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);
-    process.exitCode = 1;
+    process.exit(1);
   });

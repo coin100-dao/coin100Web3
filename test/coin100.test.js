@@ -6,7 +6,7 @@ import { ethers } from "hardhat";
 describe("COIN100 Contract", function () {
   let COIN100, coin100;
   let treasury, admin, user1, user2;
-  const initialMarketCap = ethers.utils.parseUnits("1000", 18); // 1000 * 1e18
+  const initialMarketCap = ethers.utils.parseUnits("3316185190709", 18); // 3316185190709 * 1e18
 
   beforeEach(async function () {
     [, treasury, admin, user1, user2] = await ethers.getSigners();
@@ -80,7 +80,7 @@ describe("COIN100 Contract", function () {
       const initialSupply = await coin100.totalSupply();
 
       // Simulate rebase to halve the market cap
-      const newMarketCap = 500; // Half
+      const newMarketCap = 1658092595354.5; // About Half
       await coin100.rebase(newMarketCap);
 
       const newSupply = await coin100.totalSupply();
