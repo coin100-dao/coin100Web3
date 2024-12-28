@@ -1,18 +1,19 @@
 // scripts/deploy_public_sale.js
-const hre = require("hardhat");
+import { ethers } from "hardhat";
+import { process } from 'process';
 
 async function main() {
-  const [deployer, treasury] = await hre.ethers.getSigners();
+  const [, treasury] = await ethers.getSigners();
 
   // Assume COIN100 is already deployed
   const coin100Address = "YOUR_COIN100_DEPLOYED_ADDRESS_HERE"; // Replace with actual address
 
   // Deploy C100PublicSale
-  const C100PublicSale = await hre.ethers.getContractFactory("C100PublicSale");
+  const C100PublicSale = await ethers.getContractFactory("C100PublicSale");
 
   // Define initial parameters
   const initialPaymentToken = "0x0000000000000000000000000000000000000000"; // Replace with a mock or actual token address
-  const initialRate = hre.ethers.utils.parseUnits("0.001", 18); // 0.001 token per C100
+  const initialRate = ethers.utils.parseUnits("0.001", 18); // 0.001 token per C100
   const initialSymbol = "MCK"; // Mock Token
   const initialName = "Mock Token";
   const initialDecimals = 18;
@@ -37,8 +38,8 @@ async function main() {
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => process.exitCode = 0)
   .catch((error) => {
     console.error(error);
-    process.exit(1);
+    process.exitCode = 1;
   });

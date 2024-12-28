@@ -1,14 +1,15 @@
 // test/coin100.test.js
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+/* global describe, it, beforeEach */
+import { expect } from "chai";
+import { ethers } from "hardhat";
 
 describe("COIN100 Contract", function () {
   let COIN100, coin100;
-  let owner, treasury, admin, user1, user2;
+  let treasury, admin, user1, user2;
   const initialMarketCap = ethers.utils.parseUnits("1000", 18); // 1000 * 1e18
 
   beforeEach(async function () {
-    [owner, treasury, admin, user1, user2, ...addrs] = await ethers.getSigners();
+    [, treasury, admin, user1, user2] = await ethers.getSigners();
 
     // Deploy COIN100
     COIN100 = await ethers.getContractFactory("COIN100");

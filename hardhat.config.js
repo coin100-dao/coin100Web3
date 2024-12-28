@@ -1,17 +1,19 @@
 // hardhat.config.js
-require("@nomiclabs/hardhat-waffle");
-require("@nomiclabs/hardhat-ethers");
-require('dotenv').config();
+import "@nomiclabs/hardhat-waffle";
+import "@nomiclabs/hardhat-ethers";
+import * as dotenv from "dotenv";
+import { process } from 'process';
+
+dotenv.config();
 
 const { PRIVATE_KEY, POLYGON_RPC_URL } = process.env;
 
-module.exports = {
+const config = {
   solidity: "0.8.28",
   networks: {
     hardhat: {
       forking: {
         url: POLYGON_RPC_URL || "https://polygon-rpc.com/",
-        blockNumber: 42700000, // Optional: specify a block number to fork from
       },
       chainId: 137,
     },
@@ -21,3 +23,5 @@ module.exports = {
     },
   },
 };
+
+export default config;

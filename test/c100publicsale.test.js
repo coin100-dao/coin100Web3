@@ -1,16 +1,17 @@
 // test/c100publicsale.test.js
-const { expect } = require("chai");
-const { ethers } = require("hardhat");
+/* global describe, it, beforeEach */
+import { expect } from "chai";
+import { ethers } from "hardhat";
 
 describe("C100PublicSale Contract", function () {
   let COIN100, coin100;
   let C100PublicSale, publicSale;
-  let owner, treasury, admin, buyer, paymentToken, mockPaymentToken;
+  let treasury, admin, buyer, mockPaymentToken;
   const initialMarketCap = ethers.utils.parseUnits("1000", 18); // 1000 * 1e18
   const initialRate = ethers.utils.parseUnits("0.001", 18); // 0.001 token per C100
 
   beforeEach(async function () {
-    [owner, treasury, admin, buyer, ...addrs] = await ethers.getSigners();
+    [, treasury, admin, buyer] = await ethers.getSigners();
 
     // Deploy COIN100
     COIN100 = await ethers.getContractFactory("COIN100");

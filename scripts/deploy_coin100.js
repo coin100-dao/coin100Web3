@@ -1,17 +1,18 @@
 // scripts/deploy_coin100.js
-const hre = require("hardhat");
+import { ethers } from "hardhat";
+import process from "process";
 
 async function main() {
-  const [deployer, treasury] = await hre.ethers.getSigners();
+  const [deployer, treasury] = await ethers.getSigners();
 
   console.log("Deploying contracts with the account:", deployer.address);
   console.log("Treasury address:", treasury.address);
 
   // Deploy COIN100
-  const COIN100 = await hre.ethers.getContractFactory("COIN100");
+  const COIN100 = await ethers.getContractFactory("COIN100");
   
   // Initialize with an initial market cap and treasury address
-  const initialMarketCap = hre.ethers.utils.parseUnits("1000", 18); // 1000 * 1e18
+  const initialMarketCap = ethers.utils.parseUnits("1000", 18); // 1000 * 1e18
   const tx = await COIN100.deploy(initialMarketCap, treasury.address);
   await tx.deployed();
 
@@ -19,8 +20,8 @@ async function main() {
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => process.exitCode = 0)
   .catch((error) => {
     console.error(error);
-    process.exit(1);
+    process.exitCode = 1;
   });
