@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 // OpenZeppelin Contracts
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -93,7 +93,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 initialMarketCap,
         address _treasury
     )
-        Ownable(msg.sender)  // The "Ownable" constructor is called with deployer as initial owner
+        Ownable(msg.sender)
         ReentrancyGuard()
         Pausable()
     {
