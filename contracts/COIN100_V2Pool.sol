@@ -34,6 +34,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     uint256 public constant MAX_GONS = type(uint256).max / 1e18; // Maximum gons to prevent overflow
     uint256 private _gonsPerFragment; // Determines the relationship between gons and tokens
 
+    // Rebase ratio limits
+    uint256 public maxRatio; // Maximum rebase ratio (scaled by 1e18)
+    uint256 public minRatio; // Minimum rebase ratio (scaled by 1e18)
+
     mapping(address => uint256) private _gonsBalances; // Maps addresses to their gon balances
     mapping(address => mapping(address => uint256)) private _allowances; // ERC20 allowances
 
@@ -70,6 +74,7 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 finalSupply, 
         uint256 timestamp
     );
+    event RebaseRatiosUpdated(uint256 newMaxRatio, uint256 newMinRatio);
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -129,6 +134,10 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         transferFeeBasisPoints = 200; // 2%
         treasuryFeeBasisPoints = 100; // 1% to treasury
         lpFeeBasisPoints = 100;       // 1% to LPs
+
+        // Initialize rebase ratio limits
+        maxRatio = 2e18;  // +100% rebase
+        minRatio = 0.5e18; // -50% rebase
     }
 
     /**
@@ -338,9 +347,6 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         uint256 ratio = (newMarketCapScaled * 1e18) / oldMarketCapScaled;
 
         // Implement a maximum and minimum rebase ratio to prevent extreme adjustments
-        uint256 maxRatio = 2e18; // +100% rebase
-        uint256 minRatio = 0.5e18; // -50% rebase
-
         require(ratio <= maxRatio && ratio >= minRatio, "Rebase ratio out of bounds");
 
         // Calculate the new total supply based on the rebase ratio.
@@ -523,5 +529,21 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         IERC20(token).safeTransfer(treasury, amount);
         emit TokensRescued(token, amount);
+    }
+
+    /**
+     * @notice Updates the maximum and minimum rebase ratios.
+     * @param newMaxRatio New maximum rebase ratio (scaled by 1e18).
+     * @param newMinRatio New minimum rebase ratio (scaled by 1e18).
+     */
+    function updateRebaseRatios(uint256 newMaxRatio, uint256 newMinRatio) external onlyAdmin {
+        require(newMaxRatio > 1e18, "Max ratio must be > 1");
+        require(newMinRatio < 1e18 && newMinRatio > 0, "Min ratio must be < 1 and > 0");
+        require(newMaxRatio > newMinRatio, "Max must be > min");
+        
+        maxRatio = newMaxRatio;
+        minRatio = newMinRatio;
+        
+        emit RebaseRatiosUpdated(newMaxRatio, newMinRatio);
     }
 }
