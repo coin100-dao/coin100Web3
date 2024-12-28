@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // hardhat.config.js
 require("@nomiclabs/hardhat-waffle");
 require("@nomiclabs/hardhat-ethers");

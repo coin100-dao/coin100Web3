@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 const { ethers } = require("hardhat");
 
 async function main() {

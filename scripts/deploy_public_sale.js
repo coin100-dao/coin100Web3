@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // scripts/deploy_public_sale.js
 const { ethers } = require("hardhat");
 

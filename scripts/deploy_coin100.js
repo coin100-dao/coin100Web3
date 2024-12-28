@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // scripts/deploy_coin100.js
 const { ethers } = require("hardhat");
 
