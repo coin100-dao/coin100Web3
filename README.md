@@ -27,7 +27,6 @@ cp .env.example .env
 ```
 
 Edit `.env` file and fill in your values:
-- `ALCHEMY_API_KEY`: Your Alchemy API key for network access
 - `PRIVATE_KEY`: Your wallet's private key (without 0x prefix)
 - For public sale deployment:
   - `COIN100_ADDRESS`: Address of the deployed COIN100 token
