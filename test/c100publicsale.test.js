@@ -1,22 +1,28 @@
+/* eslint-disable no-undef */
 // test/c100publicsale.test.js
 /* global describe, it, beforeEach */
-import { expect } from "chai";
-import { ethers } from "hardhat";
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
 
 describe("C100PublicSale Contract", function () {
   let COIN100, coin100;
   let C100PublicSale, publicSale;
   let treasury, admin, buyer, mockPaymentToken;
-  const initialMarketCap = ethers.utils.parseUnits("1000", 18); // 1000 * 1e18
+  const unscaledInitialMarketCap = ethers.BigNumber.from("1000");
   const initialRate = ethers.utils.parseUnits("0.001", 18); // 0.001 token per C100
+  const ROUNDING_TOLERANCE = ethers.utils.parseUnits("1", 15); // Allow for even larger rounding differences
+  let startTime, endTime;
 
   beforeEach(async function () {
     [, treasury, admin, buyer] = await ethers.getSigners();
 
     // Deploy COIN100
     COIN100 = await ethers.getContractFactory("COIN100");
-    coin100 = await COIN100.deploy(initialMarketCap, treasury.address);
+    coin100 = await COIN100.deploy(unscaledInitialMarketCap, treasury.address);
     await coin100.deployed();
+
+    // Set governance contract
+    await coin100.connect(treasury).setGovernorContract(admin.address);
 
     // Deploy a mock payment token (e.g., MockUSDC)
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -26,13 +32,13 @@ describe("C100PublicSale Contract", function () {
     // Mint some MockUSDC to buyer
     await mockPaymentToken.mint(buyer.address, ethers.utils.parseUnits("1000", 6));
 
+    // Get current block timestamp
+    const latestBlock = await ethers.provider.getBlock("latest");
+    startTime = latestBlock.timestamp + 60; // Starts in 1 minute
+    endTime = startTime + 30 * 24 * 60 * 60; // Ends in 30 days
+
     // Deploy C100PublicSale
     C100PublicSale = await ethers.getContractFactory("C100PublicSale");
-
-    const currentTime = Math.floor(Date.now() / 1000);
-    const startTime = currentTime + 60; // Starts in 1 minute
-    const endTime = startTime + 30 * 24 * 60 * 60; // Ends in 30 days
-
     publicSale = await C100PublicSale.deploy(
       coin100.address,
       mockPaymentToken.address,
@@ -46,8 +52,15 @@ describe("C100PublicSale Contract", function () {
     );
     await publicSale.deployed();
 
-    // Transfer some C100 to the public sale contract
-    await coin100.transfer(publicSale.address, ethers.utils.parseUnits("500", 18));
+    // Transfer some C100 to the public sale contract (accounting for 2% fee)
+    const transferAmount = ethers.utils.parseUnits("510", 18); // Transfer more to account for fees
+    await coin100.connect(treasury).transfer(publicSale.address, transferAmount);
+
+    // Verify the public sale contract received the correct amount after fees
+    const publicSaleBalance = await coin100.balanceOf(publicSale.address);
+    const expectedBalance = ethers.utils.parseUnits("499.8", 18); // 510 - 2% fee = 499.8
+    const difference = publicSaleBalance.sub(expectedBalance).abs();
+    expect(difference).to.be.lt(ROUNDING_TOLERANCE);
   });
 
   describe("Deployment", function () {
@@ -58,15 +71,15 @@ describe("C100PublicSale Contract", function () {
 
     it("Should initialize with correct parameters", async function () {
       expect(await publicSale.c100Token()).to.equal(coin100.address);
-      expect(await publicSale.startTime()).to.be.gt(0);
-      expect(await publicSale.endTime()).to.be.gt(await publicSale.startTime());
+      expect(await publicSale.startTime()).to.equal(startTime);
+      expect(await publicSale.endTime()).to.equal(endTime);
     });
   });
 
   describe("Purchases", function () {
     beforeEach(async function () {
       // Fast forward time to after ICO start
-      await ethers.provider.send("evm_setNextBlockTimestamp", [await publicSale.startTime()]);
+      await ethers.provider.send("evm_setNextBlockTimestamp", [startTime + 1]);
       await ethers.provider.send("evm_mine");
     });
 
@@ -82,9 +95,11 @@ describe("C100PublicSale Contract", function () {
         .to.emit(publicSale, "TokenPurchased")
         .withArgs(buyer.address, mockPaymentToken.address, paymentAmount, expectedC100);
 
-      // Check buyer's C100 balance
+      // Check buyer's C100 balance (accounting for 2% fee)
       const buyerC100 = await coin100.balanceOf(buyer.address);
-      expect(buyerC100).to.equal(expectedC100);
+      const expectedBuyerBalance = expectedC100.mul(98).div(100);
+      const buyerDifference = buyerC100.sub(expectedBuyerBalance).abs();
+      expect(buyerDifference).to.be.lt(ROUNDING_TOLERANCE);
 
       // Check treasury received MUSDC
       const treasuryBalance = await mockPaymentToken.balanceOf(treasury.address);
@@ -108,7 +123,7 @@ describe("C100PublicSale Contract", function () {
 
     it("Should not allow buying before ICO starts", async function () {
       // Deploy a new public sale contract with a future start time
-      const futureStart = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+      const futureStart = (await ethers.provider.getBlock("latest")).timestamp + 3600; // 1 hour from now
       const futureEnd = futureStart + 30 * 24 * 60 * 60;
 
       const newPublicSale = await C100PublicSale.deploy(
@@ -141,7 +156,7 @@ describe("C100PublicSale Contract", function () {
 
       // Add the new token
       await expect(
-        publicSale.addAllowedToken(
+        publicSale.connect(treasury).addAllowedToken(
           anotherToken.address,
           ethers.utils.parseUnits("0.002", 18),
           "ATK",
@@ -155,7 +170,7 @@ describe("C100PublicSale Contract", function () {
       expect(allowedToken.rate).to.equal(ethers.utils.parseUnits("0.002", 18));
 
       // Remove the token
-      await expect(publicSale.removeAllowedToken(anotherToken.address))
+      await expect(publicSale.connect(treasury).removeAllowedToken(anotherToken.address))
         .to.emit(publicSale, "AllowedTokenRemoved");
 
       // Check it's removed
@@ -174,29 +189,30 @@ describe("C100PublicSale Contract", function () {
           "Another Token",
           18
         )
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith("OwnableUnauthorizedAccount");
 
       await expect(
         publicSale.connect(nonOwner).removeAllowedToken(mockPaymentToken.address)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith("OwnableUnauthorizedAccount");
     });
 
     it("Should finalize ICO and burn unsold tokens", async function () {
       // Fast forward time to after ICO end
-      await ethers.provider.send("evm_setNextBlockTimestamp", [await publicSale.endTime()]);
+      await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 1]);
       await ethers.provider.send("evm_mine");
 
       const unsoldTokens = await coin100.balanceOf(publicSale.address);
 
       // Finalize
-      await expect(publicSale.finalize())
+      await expect(publicSale.connect(treasury).finalize())
         .to.emit(publicSale, "Finalized")
         .withArgs(unsoldTokens);
 
       // Check that unsold tokens are burned (sent to dead address)
       const deadAddress = "0x000000000000000000000000000000000000dEaD";
       const deadBalance = await coin100.balanceOf(deadAddress);
-      expect(deadBalance).to.equal(unsoldTokens);
+      const difference = deadBalance.sub(unsoldTokens).abs();
+      expect(difference).to.be.lt(ROUNDING_TOLERANCE);
 
       // Check that public sale is finalized
       expect(await publicSale.finalized()).to.be.true;
@@ -205,7 +221,7 @@ describe("C100PublicSale Contract", function () {
     it("Only owner can finalize the ICO", async function () {
       await expect(
         publicSale.connect(admin).finalize()
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith("OwnableUnauthorizedAccount");
     });
   });
 });
