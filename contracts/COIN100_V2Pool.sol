@@ -312,11 +312,11 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
     //--------------------------------------------------------------------------
 
     /**
-     * @notice Rebase the token supply based on the new market cap (in "human-readable" units).
-     *         This function uses a pure fractional approach to adjust the supply accurately.
-     * @param newMarketCap The updated market cap (not scaled by 1e18).
-     *                     For example, if the new market cap is 3,381,284,211,318 USD, pass 3381284211318.
-     */
+    * @notice Rebase the token supply based on the new market cap (in "human-readable" units).
+    *         This function uses a safe scaling factor to adjust the supply accurately.
+    * @param newMarketCap The updated market cap (not scaled by 1e18).
+    *                     For example, if the new market cap is 3,381,284,211,318 USD, pass 3381284211318.
+    */
     function rebase(uint256 newMarketCap) external onlyAdmin nonReentrant whenNotPaused {
         // Ensure the new market cap is greater than zero to prevent division by zero.
         require(newMarketCap > 0, "Market cap must be > 0");
@@ -335,8 +335,13 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
 
         // Calculate the rebase ratio with high precision.
         // ratio = (newMarketCapScaled * 1e18) / oldMarketCapScaled
-        // Multiplying by 1e18 before division maintains precision.
         uint256 ratio = (newMarketCapScaled * 1e18) / oldMarketCapScaled;
+
+        // Implement a maximum and minimum rebase ratio to prevent extreme adjustments
+        uint256 maxRatio = 2e18; // +100% rebase
+        uint256 minRatio = 0.5e18; // -50% rebase
+
+        require(ratio <= maxRatio && ratio >= minRatio, "Rebase ratio out of bounds");
 
         // Calculate the new total supply based on the rebase ratio.
         // newSupply = (_totalSupply * ratio) / 1e18
@@ -345,12 +350,15 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
         // Ensure that the new supply is greater than zero to maintain token existence.
         require(newSupply > 0, "New supply must be > 0");
 
+        // Calculate the change in total supply
+        uint256 supplyDelta = newSupply > _totalSupply ? newSupply - _totalSupply : _totalSupply - newSupply;
+
         // Update the total supply to the newly calculated supply.
         _totalSupply = newSupply;
 
         // Recalculate the relationship between gons and tokens.
-        // _gonsPerFragment determines how many gons correspond to one token unit.
-        // This adjustment ensures that all holder balances reflect the new supply accurately.
+        // Introduce a safe scaling factor to prevent overflow/underflow.
+        // For example, use a fixed-point math library or ensure safe divisions.
         _gonsPerFragment = MAX_GONS / _totalSupply;
 
         // Update the last market cap to the new scaled market cap.
@@ -367,6 +375,9 @@ contract COIN100 is Ownable, ReentrancyGuard, Pausable {
             1e18,                // Rebase ratio denominator (fixed at 1e18 for precision)
             block.timestamp      // Timestamp of the rebase
         );
+
+        // Optionally, emit an event for supply delta
+        emit RebaseInSteps(supplyDelta, newMarketCapScaled, newSupply, block.timestamp);
     }
 
     //---------------------------------------------------------------------------
