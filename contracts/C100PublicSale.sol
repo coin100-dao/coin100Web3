@@ -13,14 +13,12 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  * @notice A public sale contract for C100 tokens supporting multiple payment tokens at specific rates.
  *
  * Features:
- * - Owned by the treasury.
  * - 12-month vesting: purchased C100 tokens are locked and claimable after `vestingDuration`.
  * - Per-user cap on the total C100 that can be purchased.
  * - Delay between consecutive purchases to mitigate bot attacks.
- * - Presale duration defined by start and end timestamps.
+ * - Presale duration defined by start/end timestamps.
  * - Allows buying C100 with multiple approved ERC20 tokens at specified rates.
- * - Admins can add or remove allowed payment tokens and set their rates.
- * - Finalizes by burning unsold C100 tokens (unsold = total in contract minus all locked amounts).
+ * - Finalizes by burning only the truly unsold C100 tokens.
  */
 contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
@@ -63,20 +61,23 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
     // Vesting & Purchase Control
     // ---------------------------------------
 
-    /// @notice The vesting duration (seconds) for each purchase. Default: 12 months = 365 days
+    /// @notice The vesting duration (seconds) for each purchase. (e.g. 12 months = 365 days)
     uint256 public vestingDuration = 365 days;
 
-    /// @notice The minimum delay (seconds) between consecutive purchases by the same user
-    uint256 public purchaseDelay = 300; // 5 minutes by default
+    /// @notice The minimum delay (seconds) between consecutive purchases by the same user.
+    uint256 public purchaseDelay = 300; // 5 minutes
 
-    /// @notice The maximum C100 each user can purchase (in base units, i.e., 1e18 = 1 token if decimals=18).
-    uint256 public maxUserCap = 1_000_000 ether; // e.g. 1M C100 as an example
+    /// @notice The maximum C100 each user can purchase (1e18 = 1 token if decimals=18).
+    uint256 public maxUserCap = 1_000_000 ether;
 
-    /// @notice Tracks the total amount of C100 each user has purchased (to enforce `maxUserCap`).
+    /// @notice Tracks the total amount of C100 each user has purchased (enforcing `maxUserCap`).
     mapping(address => uint256) public userPurchases;
 
-    /// @notice Tracks the last purchase timestamp for each user (to enforce `purchaseDelay`).
+    /// @notice Tracks the last purchase timestamp for each user (enforcing `purchaseDelay`).
     mapping(address => uint256) public lastPurchaseTime;
+
+    /// @notice Tracks the total amount of tokens currently locked for vesting across **all** users.
+    uint256 public totalLockedTokens;
 
     /// @notice Struct storing vesting info for each purchase.
     struct VestingSchedule {
@@ -84,7 +85,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         uint256 releaseTime;  // when tokens can be claimed
     }
 
-    /// @notice Mapping from user => array of vesting schedules
+    /// @notice Mapping: user => array of vesting schedules
     mapping(address => VestingSchedule[]) public vestings;
 
     // ---------------------------------------
@@ -195,7 +196,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
      * @param _initialDecimals Decimals of the initial token.
      * @param _treasury Address of the treasury.
      * @param _startTime UNIX timestamp for ICO start.
-     * @param _endTime UNIX timestamp for ICO end (e.g., 12 months later).
+     * @param _endTime UNIX timestamp for ICO end.
      */
     constructor(
         address _c100Token,
@@ -255,9 +256,9 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Allows users to purchase C100 tokens with any allowed token at a specific rate.
-     *         The purchased tokens are vested and claimable after `vestingDuration`.
+     *         The purchased tokens are locked and claimable after `vestingDuration`.
      * @param paymentToken Address of the token to pay with.
-     * @param paymentAmount Amount of the payment token to spend (in its own decimals).
+     * @param paymentAmount Amount of the payment token to spend.
      */
     function buyWithToken(address paymentToken, uint256 paymentAmount)
         external
@@ -274,15 +275,14 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
             "Purchase too soon"
         );
 
-        // Get token rate data
         AllowedToken memory tokenData = getAllowedToken(paymentToken);
 
-        // Calculate how many C100 tokens (in 1e18 decimals) the user receives
+        // Calculate how many C100 tokens (1e18 decimals) the user receives
         // c100Amount = (paymentAmount * 1e18) / rate
         uint256 c100Amount = (paymentAmount * 1e18) / tokenData.rate;
         require(
-            c100Token.balanceOf(address(this)) >= c100Amount,
-            "Not enough C100 tokens"
+            c100Token.balanceOf(address(this)) >= (totalLockedTokens + c100Amount),
+            "Not enough C100 tokens in contract"
         );
 
         // Enforce per-user cap
@@ -291,18 +291,23 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
             "Exceeds max user cap"
         );
 
-        // Update user stats
+        // Update user purchase info
         lastPurchaseTime[msg.sender] = block.timestamp;
         userPurchases[msg.sender] += c100Amount;
 
         // Transfer payment from buyer to treasury
         tokenData.token.safeTransferFrom(msg.sender, treasury, paymentAmount);
 
-        // Instead of transferring C100 directly, we lock them in a vesting schedule
-        vestings[msg.sender].push(VestingSchedule({
-            amount: c100Amount,
-            releaseTime: block.timestamp + vestingDuration
-        }));
+        // Lock tokens in a vesting schedule
+        vestings[msg.sender].push(
+            VestingSchedule({
+                amount: c100Amount,
+                releaseTime: block.timestamp + vestingDuration
+            })
+        );
+
+        // Increment total locked
+        totalLockedTokens += c100Amount;
 
         emit TokenPurchased(msg.sender, paymentToken, paymentAmount, c100Amount);
     }
@@ -314,10 +319,7 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         uint256 totalClaimable = 0;
         VestingSchedule[] storage schedules = vestings[msg.sender];
 
-        // Loop through the user's vesting schedules
-        // We collect all amounts that have passed releaseTime
         for (uint256 i = 0; i < schedules.length; i++) {
-            // If it's unlocked
             if (
                 schedules[i].amount > 0 &&
                 block.timestamp >= schedules[i].releaseTime
@@ -329,7 +331,10 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
         require(totalClaimable > 0, "No tokens to claim");
 
-        // Transfer all unlocked tokens to the user
+        // Decrement global locked count
+        totalLockedTokens -= totalClaimable;
+
+        // Transfer unlocked tokens
         c100Token.safeTransfer(msg.sender, totalClaimable);
 
         emit TokensClaimed(msg.sender, totalClaimable);
@@ -362,85 +367,22 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         return allowedTokens;
     }
 
-    /**
-     * @notice Returns the total amount of locked tokens for a user 
-     *         (both locked and not yet claimed, irrespective of releaseTime).
-     */
-    function getTotalLockedForUser(address user) public view returns (uint256) {
-        VestingSchedule[] memory schedules = vestings[user];
-        uint256 locked = 0;
-        for (uint256 i = 0; i < schedules.length; i++) {
-            if (schedules[i].amount > 0) {
-                locked += schedules[i].amount;
-            }
-        }
-        return locked;
-    }
-
     // ---------------------------------------
     // Admin Functions
     // ---------------------------------------
 
     /**
      * @notice Finalizes the ICO by burning any unsold C100 tokens.
-     *         Unsold = tokens in contract - (sum of all locked amounts).
+     *         "Unsold" = tokens currently in the contract minus totalLockedTokens.
      */
     function finalize() external onlyOwner icoEnded nonReentrant {
         require(!finalized, "Already finalized");
         finalized = true;
 
-        // Calculate how many tokens are locked for all users
-        uint256 totalLocked = 0;
-        // WARNING: If you have many users, iterating over all might be expensive.
-        // For large user bases, you’d track totalLocked on-the-fly instead of computing each time.
-        // For simplicity here, we just do a naive approach.
-
-        // We can't easily iterate all addresses (no list). 
-        // Alternatively, you might track "totalLocked" in a state variable each time someone buys.
-        // We'll do that for demonstration:
-        // => We'll add a function to sum all vestings for all users or maintain it incrementally.
-
-        // Because we don't have a list of all users in this sample, we show a conceptual approach:
-        // In a real scenario, you might store "totalTokensSold" and "totalTokensVested" each purchase
-        // then unsold = contract balance - totalTokensVested. 
-        // Let's do that approach for efficiency:
-
-        // The safer approach: track totalVested in buyWithToken:
-        // but let's demonstrate the naive approach by scanning
-        // => We'll just trust we keep track in a new variable: totalVestedSoFar
-
-        // This is a placeholder. 
-        // We'll do the real approach: unsold = c100Token.balanceOf(address(this)) - sumOfAllUserVesting.
-
-        // In practice, you'd do a partial data structure or you'd not store partial user addresses. 
-        // For demonstration, let's pretend we can do it. 
-        // We'll show the code but comment it out because we have no direct way to iterate all users.
-
-        // For demonstration in a real scenario:
-        //     uint256 unsold = c100Token.balanceOf(address(this)) - totalLocked;
-        // c100Token.safeTransfer(... dead, unsold);
-
         uint256 contractBalance = c100Token.balanceOf(address(this));
+        require(contractBalance > totalLockedTokens, "Nothing to burn");
 
-        // *** Demo assumption ***: we treat all tokens in the contract as unsold. 
-        // But in reality, we must keep enough to cover vested tokens. 
-        // We'll do a simpler approach: 
-        // We'll track total vested in a separate variable, so let's do that next:
-
-        // For now, let's just burn whatever remains in the contract after the sale. 
-        // NOTE: This might burn user-vested tokens if not carefully handled. 
-        // A safer approach is to do finalization AFTER or store a "totalTokensCommitted" state.
-
-        // *** Safer approach ***:
-        //    - Maintain a state variable "totalVestedSoFar" that increments each purchase.
-        //    - Then unsold = contractBalance - totalVestedSoFar (the portion locked for users).
-        // We'll implement that quickly to be safer.
-
-        uint256 totalVestedSoFar = getGlobalVestedAmount();
-        require(contractBalance > totalVestedSoFar, "Nothing left to burn");
-
-        uint256 unsold = contractBalance - totalVestedSoFar;
-
+        uint256 unsold = contractBalance - totalLockedTokens;
         if (unsold > 0) {
             c100Token.safeTransfer(
                 address(0x000000000000000000000000000000000000dEaD),
@@ -449,24 +391,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
         }
 
         emit Finalized(unsold);
-    }
-
-    /**
-     * @notice Returns the sum of all locked (unclaimed) tokens for all users 
-     *         by iterating over all vestings. 
-     *         WARNING: If the user set is unbounded, this is not feasible on-chain.
-     */
-    function getGlobalVestedAmount() public view returns (uint256) {
-        // In a real scenario, you'd track a single cumulative counter
-        // because iterating over a dynamic set of users is generally impossible
-        // unless you store them in arrays or do off-chain queries.
-        // 
-        // This function is a placeholder to demonstrate logic. 
-        // If you don't keep track of all user addresses, you can't truly do this on-chain.
-        // 
-        // So for demonstration, we just return 0 or you'd keep a global "totalVested" updated on every purchase.
-
-        return 0;
     }
 
     /**
@@ -601,7 +525,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
             c100Token.balanceOf(treasury) >= amount,
             "Not enough tokens in treasury"
         );
-        // The treasury must approve this contract to spend the tokens.
         c100Token.safeTransferFrom(
             treasury,
             address(0x000000000000000000000000000000000000dEaD),
@@ -629,7 +552,6 @@ contract C100PublicSale is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @notice Update the vesting duration, purchase delay, and max user cap.  
-     *         All are in one function for convenience. You can split them if desired.
      * @param _vestingDuration New vesting duration in seconds.
      * @param _purchaseDelay New delay between purchases in seconds.
      * @param _maxUserCap New maximum total C100 a user can purchase (base units).
