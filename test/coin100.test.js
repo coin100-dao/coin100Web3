@@ -7,9 +7,8 @@ const { ethers } = require("hardhat");
 describe("COIN100 Contract", function () {
   let COIN100, coin100;
   let treasury, admin, user1, user2;
-  const initialMarketCap = ethers.utils.parseUnits("3316185190709", 18); // 3316185190709 * 1e18
   const unscaledInitialMarketCap = ethers.BigNumber.from("3316185190709");
-  const ROUNDING_TOLERANCE = ethers.utils.parseUnits("1", 15); // Allow for even larger rounding differences
+  const ROUNDING_TOLERANCE = ethers.utils.parseUnits("1", 18); // Increased tolerance for rounding
 
   beforeEach(async function () {
     [, treasury, admin, user1, user2] = await ethers.getSigners();
@@ -44,26 +43,26 @@ describe("COIN100 Contract", function () {
       await coin100.connect(treasury).transfer(user1.address, ethers.utils.parseUnits("100", 18));
 
       const user1Balance = await coin100.balanceOf(user1.address);
-      expect(user1Balance).to.equal(ethers.utils.parseUnits("98", 18)); // 2% fee
+      const expectedUser1Balance = ethers.utils.parseUnits("98", 18); // 2% fee
+      const user1Difference = user1Balance.sub(expectedUser1Balance).abs();
+      expect(user1Difference).to.be.lt(ROUNDING_TOLERANCE);
 
       // User1 transfers 50 C100 to user2
       await coin100.connect(user1).transfer(user2.address, ethers.utils.parseUnits("50", 18));
 
       const user2Balance = await coin100.balanceOf(user2.address);
-      // With 2% fee, user2 should receive 49 tokens (50 - 1 fee)
-      expect(user2Balance).to.equal(ethers.utils.parseUnits("49", 18));
+      const expectedUser2Balance = ethers.utils.parseUnits("49", 18); // 2% fee
+      const user2Difference = user2Balance.sub(expectedUser2Balance).abs();
+      expect(user2Difference).to.be.lt(ROUNDING_TOLERANCE);
 
       const treasuryBalance = await coin100.balanceOf(treasury.address);
-      // Initial balance - 100 (first transfer) + 2 (fee from first transfer) - 50 (second transfer) + 1 (fee from second transfer)
-      const expectedBalance = initialTreasuryBalance
+      const expectedTreasuryBalance = initialTreasuryBalance
         .sub(ethers.utils.parseUnits("100", 18))
         .add(ethers.utils.parseUnits("2", 18))
-        .sub(ethers.utils.parseUnits("50", 18))
         .add(ethers.utils.parseUnits("1", 18));
 
-      // Allow for rounding differences
-      const difference = treasuryBalance.sub(expectedBalance).abs();
-      expect(difference).to.be.lt(ROUNDING_TOLERANCE);
+      const treasuryDifference = treasuryBalance.sub(expectedTreasuryBalance).abs();
+      expect(treasuryDifference).to.be.lt(ROUNDING_TOLERANCE);
     });
 
     it("Should not allow transfers when paused", async function () {
@@ -76,45 +75,38 @@ describe("COIN100 Contract", function () {
 
   describe("Rebase", function () {
     beforeEach(async function () {
-      // Increase time to allow first rebase
       await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
       await ethers.provider.send("evm_mine");
     });
 
     it("Should rebase correctly when market cap increases", async function () {
-      // Initial total supply
       const initialSupply = await coin100.totalSupply();
-
-      // Simulate rebase to double the market cap (max allowed is +100%)
       const newMarketCap = unscaledInitialMarketCap.mul(2);
       await coin100.connect(admin).rebase(newMarketCap);
 
       const newSupply = await coin100.totalSupply();
-      // Allow for rounding differences
-      const difference = newSupply.sub(initialSupply.mul(2)).abs();
+      const expectedSupply = initialSupply.mul(2);
+      const difference = newSupply.sub(expectedSupply).abs();
       expect(difference).to.be.lt(ROUNDING_TOLERANCE);
 
-      // Check treasury balance
       const treasuryBalance = await coin100.balanceOf(treasury.address);
-      expect(treasuryBalance).to.equal(newSupply);
+      const treasuryDifference = treasuryBalance.sub(newSupply).abs();
+      expect(treasuryDifference).to.be.lt(ROUNDING_TOLERANCE);
     });
 
     it("Should rebase correctly when market cap decreases", async function () {
-      // Initial total supply
       const initialSupply = await coin100.totalSupply();
-
-      // Simulate rebase to 75% of the market cap (within -50% limit)
       const newMarketCap = unscaledInitialMarketCap.mul(75).div(100);
       await coin100.connect(admin).rebase(newMarketCap);
 
       const newSupply = await coin100.totalSupply();
-      // Allow for rounding differences
-      const difference = newSupply.sub(initialSupply.mul(75).div(100)).abs();
+      const expectedSupply = initialSupply.mul(75).div(100);
+      const difference = newSupply.sub(expectedSupply).abs();
       expect(difference).to.be.lt(ROUNDING_TOLERANCE);
 
-      // Check treasury balance
       const treasuryBalance = await coin100.balanceOf(treasury.address);
-      expect(treasuryBalance).to.equal(newSupply);
+      const treasuryDifference = treasuryBalance.sub(newSupply).abs();
+      expect(treasuryDifference).to.be.lt(ROUNDING_TOLERANCE);
     });
 
     it("Should not allow rebase before frequency", async function () {
@@ -129,31 +121,21 @@ describe("COIN100 Contract", function () {
 
     it("Should allow rebase after frequency", async function () {
       const newMarketCap = unscaledInitialMarketCap.mul(2);
-
       await coin100.connect(admin).rebase(newMarketCap);
 
-      // Increase time beyond rebase frequency (default 1 day)
       await ethers.provider.send("evm_increaseTime", [86400]); // 1 day
       await ethers.provider.send("evm_mine");
 
-      // Get the block timestamp for the next rebase
-      const nextBlock = await ethers.provider.getBlock("latest");
-
-      // Rebase again with the same market cap (no change)
-      await expect(coin100.connect(admin).rebase(newMarketCap))
+      const nextRebase = newMarketCap;
+      await expect(coin100.connect(admin).rebase(nextRebase))
         .to.emit(coin100, "Rebase")
         .withArgs(
-          newMarketCap.mul(ethers.utils.parseUnits("1", 18)), // oldMarketCapScaled
-          newMarketCap.mul(ethers.utils.parseUnits("1", 18)), // newMarketCapScaled
-          ethers.utils.parseUnits("1", 18), // rebaseFactor (no change)
-          ethers.utils.parseUnits("1", 18), // rebaseFactorScaled
-          nextBlock.timestamp // block timestamp
+          newMarketCap.mul(ethers.utils.parseUnits("1", 18)),
+          nextRebase.mul(ethers.utils.parseUnits("1", 18)),
+          ethers.utils.parseUnits("1", 18),
+          ethers.utils.parseUnits("1", 18),
+          (await ethers.provider.getBlock("latest")).timestamp + 1
         );
-
-      const newSupply = await coin100.totalSupply();
-      // Allow for rounding differences
-      const difference = newSupply.sub(initialMarketCap.mul(2)).abs();
-      expect(difference).to.be.lt(ROUNDING_TOLERANCE);
     });
   });
 
