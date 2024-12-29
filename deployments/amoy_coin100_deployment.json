@@ -1,0 +1,9 @@
+{
+  "network": "amoy",
+  "coin100": {
+    "address": "0xf9a204AfeCc1368826f52187dc546e893D02cC31",
+    "initialMarketCap": "3316185190709000000000000000000",
+    "deployer": "0x56220A000ad73a6706D49e49aB1f5E9D097ACaaF"
+  },
+  "timestamp": "2024-12-29T14:27:54.787Z"
+}

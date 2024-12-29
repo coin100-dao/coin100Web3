@@ -1,0 +1,18 @@
+{
+  "network": "amoy",
+  "coin100": {
+    "address": "0xf9a204AfeCc1368826f52187dc546e893D02cC31"
+  },
+  "mockUSDC": {
+    "address": "0xeFFB117f0bB8c0740b30f224A3Ef334c905E3f45",
+    "symbol": "MUSDC",
+    "decimals": 6
+  },
+  "publicSale": {
+    "address": "0x7983e3fF9bBE8558EF745cfE634A51499E0940f9",
+    "startTime": 1735483163,
+    "endTime": 1738075163,
+    "initialRate": "1000000000000000"
+  },
+  "timestamp": "2024-12-29T14:34:38.378Z"
+}
